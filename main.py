@@ -59,6 +59,7 @@ class DynamicObject:
     def vy(self):
         return self.speed * np.sin(self.direction)
 
+print('git 연결 확인됐나?')
 
 # 객체 생성
 objects = [DynamicObject() for _ in range(3)]
