@@ -394,7 +394,7 @@ def main():
             last_log_time = current_time
 
 
-            # # IMM 적용 구간
+            # IMM 적용 구간
             # # 초기 분산 (각 모델의 초기 불확실성)
             # initial_variances = [1, 4, 9]
             # # 초기 확률 (모델 초기 가중치)
