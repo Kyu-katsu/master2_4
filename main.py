@@ -2,6 +2,10 @@ import time
 import pygame
 import numpy as np
 import math
+import matplotlib
+matplotlib.use('TkAgg')  # 또는 'Qt5Agg'
+import matplotlib.pyplot as plt
+from scipy.stats import norm
 
 
 # 초기 설정
@@ -77,9 +81,9 @@ class DynamicObject:
         text = font.render(str(self.id), True, (0, 0, 0))
         screen.blit(text, (int(self.x * SCALE) + 10, int(self.y * SCALE) - 10))
 
-    def calculate_offset(self):
-        center_x, center_y = SPACE_SIZE // 2, SPACE_SIZE // 2
-        return math.sqrt((self.x - center_x) ** 2 + (self.y - center_y) ** 2)
+    # def calculate_offset(self):
+    #     center_x, center_y = SPACE_SIZE // 2, SPACE_SIZE // 2
+    #     return math.sqrt((self.x - center_x) ** 2 + (self.y - center_y) ** 2)
 
     @property
     def vx(self):
@@ -107,116 +111,228 @@ def draw_offset(screen, obj):
     font = pygame.font.Font(None, 24)
     text = font.render(f"Offset: {offset / SCALE:.2f}", True, (0, 0, 0))
     screen.blit(text, (obj.x * SCALE, obj.y * SCALE - 20))
+    # return offset / SCALE
 
 
-def log_object_states(objects):
-    print("\nObject States:")
-    for i, obj in enumerate(objects):
-        offset = obj.calculate_offset()
-        print(f"Object {i+1}: x={obj.x:.2f}, y={obj.y:.2f}, "
-              f"vx={obj.vx:.2f}, vy={obj.vy:.2f}, "
-              f"ax={obj.ax:.2f}, ay={obj.ay:.2f}, offset={offset:.2f}")
+def cal_offset(obj):
+    center_x, center_y = WIDTH // 2, HEIGHT // 2
+    offset = math.sqrt((obj.x * SCALE - center_x) ** 2 + (obj.y * SCALE - center_y) ** 2)
+    RoI_centerline_offset = (round(abs((offset / SCALE) - 5), 2), round(abs((offset / SCALE) - 20), 2), round(abs((offset / SCALE) - 40), 2))  # RoI별 거리
+    return RoI_centerline_offset
 
 
-def log_offsets(timestep, objects):
-    print(f"[time step {timestep}] ", end="")
-    offsets = []
-    for obj in objects:
-        # 중심선 기준 거리 계산 (RoI 1: 5, RoI 2: 20, RoI 3: 40)
-        offset = obj.calculate_offset()  # 객체 중심까지의 거리
-        roi_offsets = (round(abs(offset - 5), 2), round(abs(offset - 20), 2), round(abs(offset - 40), 2))  # RoI별 거리
-        offsets.append(roi_offsets)
+def draw_velocity_arrows(screen, obj, center_x, center_y):
+    start_pos = (int(obj.x * SCALE), int(obj.y * SCALE))  # 객체 위치
 
-    # 출력
-    for i, roi_offsets in enumerate(offsets):
-        print(f"object {i + 1} offset {roi_offsets} ", end="")
-        if i < len(offsets) - 1:
-            print("/ ", end="")
+    # 화살표를 그리는 내부 함수
+    def draw_arrow(color, start, vector, scale=30):
+        magnitude = math.sqrt(vector[0] ** 2 + vector[1] ** 2)  # 속도 크기
+        if magnitude == 0:
+            return  # 속도가 0이면 화살표 없음
+        unit_vector = (vector[0] / magnitude, vector[1] / magnitude)  # 방향 벡터 계산
+        end_pos = (start[0] + int(unit_vector[0] * magnitude * scale),
+                   start[1] + int(unit_vector[1] * magnitude * scale))
+        pygame.draw.line(screen, color, start, end_pos, 2)  # 화살표 몸체
 
-    return offsets
+        # 화살표 촉 계산
+        arrow_size = 10  # 촉 크기
+        arrow_point1 = (end_pos[0] - int(unit_vector[0] * arrow_size - unit_vector[1] * arrow_size // 2),
+                        end_pos[1] - int(unit_vector[1] * arrow_size + unit_vector[0] * arrow_size // 2))
+        arrow_point2 = (end_pos[0] - int(unit_vector[0] * arrow_size + unit_vector[1] * arrow_size // 2),
+                        end_pos[1] - int(unit_vector[1] * arrow_size - unit_vector[0] * arrow_size // 2))
+        pygame.draw.polygon(screen, color, [end_pos, arrow_point1, arrow_point2])
+
+    # x축 속도 화살표 (녹색)
+    draw_arrow(GREEN, start_pos, (obj.vx, 0))
+
+    # y축 속도 화살표 (파란색)
+    draw_arrow(BLUE, start_pos, (0, obj.vy))
+
+    # 중심점 방향 속도 화살표 (빨간색)
+    # 중심점과 객체 간 방향 벡터 계산
+    vcx = center_x / SCALE - obj.x  # 중심점으로의 x축 방향
+    vcy = center_y / SCALE - obj.y  # 중심점으로의 y축 방향
+    center_magnitude = math.sqrt(vcx ** 2 + vcy ** 2)  # 중심점 방향 벡터 크기
+    if center_magnitude > 0:
+        vcx /= center_magnitude  # 단위 벡터화
+        vcy /= center_magnitude
+
+    # 중심점 방향 속도의 크기를 기반으로 화살표 길이를 조정
+    center_speed = obj.vx * vcx + obj.vy * vcy  # 중심점 방향 속도 크기 (스칼라 곱)
+    draw_arrow(RED, start_pos, (vcx * center_speed, vcy * center_speed))
 
 
-class IMM():
-    def __init__(self, num_models, transition_matrix, initial_mu, initial_states, initial_covariances):
-        """Initilize"""
-        self.num_models = num_models    # 3: RoI 1, RoI 2, RoI 3
-        self.transition_matrix = np.array(transition_matrix)    # 3x3
-        self.mu = np.array(initial_mu)  # 3x1
-        self.states = initial_states  # 각 객체의 초기 상태(랜덤하게 받은거 그대로 먹이기)
-        self.covariances = initial_covariances  # 공분산 설정
+def calculate_center_velocity(obj, center_x, center_y):
+    # 중심점 벡터
+    vcx = center_x / SCALE - obj.x
+    vcy = center_y / SCALE - obj.y
+    center_vector = np.array([vcx, vcy])
 
-    def interaction_step(self):
-        """Model interaction: Calculate mixed initial state and covariance."""
-        mixed_states = []
-        mixed_covariances = []
-        mu_conditional = self.transition_matrix.T @ self.mu
-        c_bar = mu_conditional / np.sum(mu_conditional)
+    # 객체 속도 벡터
+    velocity_vector = np.array([obj.vx, obj.vy])
 
+    # 중심점 방향 속도 계산
+    center_vector_magnitude = np.linalg.norm(center_vector)
+    if center_vector_magnitude == 0:  # 중심점과 겹치면 속도 0
+        return 0
+
+    center_velocity = np.dot(velocity_vector, center_vector) / center_vector_magnitude
+    return round(center_velocity, 2)
+
+
+def cal_velocity(obj):
+    vel = obj.speed
+    dir = obj.direction
+    return round(vel, 2), dir
+
+
+# # 일단 굳이 필요 없음
+# def log_object_states(objects):
+#     print("\nObject States:")
+#     for i, obj in enumerate(objects):
+#         offset = obj.calculate_offset()
+#         print(f"Object {i+1}: x={obj.x:.2f}, y={obj.y:.2f}, "
+#               f"vx={obj.vx:.2f}, vy={obj.vy:.2f}, "
+#               f"ax={obj.ax:.2f}, ay={obj.ay:.2f}, offset={offset:.2f}")
+# # 일단 굳이 필요 없음
+# def log_offsets(timestep, objects):
+#     print(f"[time step {timestep}] ", end="")
+#     offsets = []
+#     print()
+#     for obj in objects:
+#         # 중심선 기준 거리 계산 (RoI 1: 5, RoI 2: 20, RoI 3: 40)
+#         offset = obj.calculate_offset()  # 객체 ~ 중심 거리
+#         roi_offsets = (round(abs(offset - 5), 2), round(abs(offset - 20), 2), round(abs(offset - 40), 2))  # RoI별 거리
+#         offsets.append(roi_offsets)
+#         print('offset은?{}'.format(offset))
+#         print('q_k^i는?{}'.format(offsets))
+#
+#     # 출력
+#     for i, roi_offsets in enumerate(offsets):
+#         print(f"object {i + 1} offset {roi_offsets} ", end="")
+#         if i < len(offsets) - 1:
+#             print("/ ", end="")
+#     return offsets
+
+
+class IMM:
+    def __init__(self, initial_offsets, initial_variances, initial_probs):
+        self.num_models = 3  # 모델 수 (RoI 1, RoI 2, RoI 3)
+        self.q_bar = initial_offsets  # 평균 오프셋 (initial average)
+        self.P = initial_variances  # 분산 (initial uncertainty)
+        self.mu = initial_probs  # 모델 확률
+        self.q = [self.q_bar[i] + self.P[i] for i in range(self.num_models)]  # Initial offsets with variance
+        self.q_distributions = [norm(loc=self.q_bar[i], scale=np.sqrt(self.P[i])) for i in range(self.num_models)]
+
+    def draw_PDF(self):
+        # x 값의 범위 설정 (분포가 잘 보일 정도로)
+        x_values = np.linspace(-25, 75, 100)
+
+        # 그래프 그리기
+        plt.figure(figsize=(10, 6))
+
+        # 각 분포에 대해 PDF를 그리기
         for i in range(self.num_models):
-            mixed_state = np.sum(
-                [self.transition_matrix[j, i] * self.states[j] for j in range(self.num_models)], axis=0
-            )
-            mixed_states.append(mixed_state)
-            mixed_covariance = np.sum(
-                [self.transition_matrix[j, i] *
-                 (self.covariances[j] + np.outer(self.states[j] - mixed_state, self.states[j] - mixed_state))
-                 for j in range(self.num_models)],
-                axis=0
-            )
-            mixed_covariances.append(mixed_covariance)
+            plt.plot(x_values, self.q_distributions[i].pdf(x_values),
+                     label=f'Model {i + 1} (μ={self.mu[i]}, σ={np.sqrt(self.P[i]):.2f})')
 
-        return c_bar, mixed_states, mixed_covariances
+        # RoI 분할
+        plt.axvspan(0, 10, color='red', alpha=0.1, label="Highlighted Region")
+        plt.axvspan(10, 30, color='green', alpha=0.1, label="Highlighted Region")
+        plt.axvspan(30, 50, color='blue', alpha=0.1, label="Highlighted Region")
 
-    def prediction_step(self, mixed_states, mixed_covariances, process_models, process_covariances):
-        """Model-specific prediction step."""
-        predicted_states = []
-        predicted_covariances = []
-        for i in range(self.num_models):
-            A = process_models[i]
-            Q = process_covariances[i]
-            predicted_state = A @ mixed_states[i]
-            predicted_covariance = A @ mixed_covariances[i] @ A.T + Q
-            predicted_states.append(predicted_state)
-            predicted_covariances.append(predicted_covariance)
+        # 그래프 설정
+        plt.title('Normal Distributions for Each Model')
+        plt.xlabel('x')
+        plt.ylabel('Probability Density')
+        plt.legend()
 
-        return predicted_states, predicted_covariances
+        # 그래프 표시
+        plt.show()
 
-    def update_step(self, observations, observation_models, observation_covariances):
-        """Model-specific update step."""
-        updated_states = []
-        updated_covariances = []
-        likelihoods = np.zeros(self.num_models)
 
-        for i in range(self.num_models):
-            H = observation_models[i]
-            R = observation_covariances[i]
-            z = observations
-            y = z - H @ self.states[i]
-            S = H @ self.covariances[i] @ H.T + R
-            K = self.covariances[i] @ H.T @ np.linalg.inv(S)
-            updated_state = self.states[i] + K @ y
-            updated_covariance = (np.eye(len(self.states[i])) - K @ H) @ self.covariances[i]
+    def _expected_offset(self):    # \hat{q}_k
+        expected_offset = sum(self.mu[i] * self.q[i] for i in range(self.num_models))
+        return expected_offset
 
-            likelihoods[i] = np.exp(-0.5 * y.T @ np.linalg.inv(S) @ y) / np.sqrt(np.linalg.det(2 * np.pi * S))
+    def state_transition_matrix(self):
+        """
+        Predict next state for each model.
+        """
+        # Example: Gaussian-based transition
+        new_q_bar = self.q_bar + np.random.normal(0, np.sqrt(self.P))
+        return new_q_bar
 
-            updated_states.append(updated_state)
-            updated_covariances.append(updated_covariance)
 
-        return updated_states, updated_covariances, likelihoods
+    def make_TPM(self):
+        self.transition_matrix
+
+    def mixing_step(self):
+        """
+        Calculate mixed probabilities, offsets, and variances.
+        """
+        mixed_probs = self.transition_matrix.T @ self.mu
+        c_bar = mixed_probs / np.sum(mixed_probs)  # Normalize
+
+        mixed_q_bar = np.dot(self.transition_matrix.T, self.q_bar)
+        mixed_P = np.dot(self.transition_matrix.T, self.P + (self.q_bar - mixed_q_bar) ** 2)
+        return c_bar, mixed_q_bar, mixed_P
+
+    def update_step(self, observed_offsets, observation_variances):
+        """
+        Update state based on observations.
+        """
+        updated_q_bar = []
+        updated_P = []
+        likelihoods = []
+
+        for i in range(len(self.q_bar)):
+            residual = observed_offsets - self.q_bar[i]
+            S = self.P[i] + observation_variances[i]  # Innovation covariance
+            K = self.P[i] / S  # Kalman gain
+
+            # Update state and variance
+            updated_q = self.q_bar[i] + K * residual
+            updated_variance = (1 - K) * self.P[i]
+
+            # Calculate likelihood
+            likelihood = (1 / np.sqrt(2 * np.pi * S)) * np.exp(-0.5 * (residual ** 2 / S))
+
+            updated_q_bar.append(updated_q)
+            updated_P.append(updated_variance)
+            likelihoods.append(likelihood)
+
+        return np.array(updated_q_bar), np.array(updated_P), np.array(likelihoods)
 
     def fusion_step(self, likelihoods):
-        """IMM model fusion."""
+        """
+        Fuse state across models to get the final state.
+        """
         self.mu = likelihoods * self.mu
         self.mu /= np.sum(self.mu)  # Normalize
 
-        fused_state = np.sum([self.mu[i] * self.states[i] for i in range(self.num_models)], axis=0)
-        fused_covariance = np.sum(
-            [self.mu[i] * (self.covariances[i] + np.outer(self.states[i] - fused_state, self.states[i] - fused_state))
-             for i in range(self.num_models)],
-            axis=0
-        )
+        fused_q = np.dot(self.mu, self.q_bar)  # Weighted average of offsets
+        fused_P = np.dot(self.mu, self.P + (self.q_bar - fused_q) ** 2)  # Weighted variance
 
-        return fused_state, fused_covariance
+        return fused_q, fused_P
+
+    def step(self, observed_offsets, observation_variances):
+        """
+        Perform one complete IMM step.
+        """
+        # 1. Mixing Step
+        c_bar, mixed_q_bar, mixed_P = self.mixing_step()
+
+        # 2. Prediction Step
+        predicted_q_bar = self.state_transition_matrix()
+        predicted_P = mixed_P  # Assume constant variance for simplicity
+
+        # 3. Update Step
+        updated_q_bar, updated_P, likelihoods = self.update_step(observed_offsets, observation_variances)
+
+        # 4. Fusion Step
+        fused_q, fused_P = self.fusion_step(likelihoods)
+        return fused_q, fused_P
 
 
 
@@ -230,7 +346,8 @@ def main():
     # 객체 생성 (ID 부여)
     objects = [DynamicObject(id=i + 1) for i in range(3)]
     last_log_time = time.time()
-    timestep = 1  # Time step counter
+
+    timestep = 0  # Time step counter
 
     running = True
     while running:
@@ -243,21 +360,49 @@ def main():
         # 동심원 그리기
         draw_circles(screen)
 
+        # 중심점 설정
+        center_x, center_y = WIDTH // 2, HEIGHT // 2
+
         # 객체 업데이트 및 그리기
         for obj in objects:
             obj.update(0.1)
             obj.draw(screen)
-            draw_offset(screen, obj)
+            draw_offset(screen, obj)   # obj 1, 2, 3에 대한 offset 표현
+            draw_velocity_arrows(screen, obj, center_x, center_y)   # obj 1, 2, 3에 대한 속도 화살표 표현
 
+        # offset 관측
         current_time = time.time()
-        if current_time - last_log_time >= 1.0:
-            obs_offsets = log_offsets(timestep, objects)
-            timestep += 1
-
-            log_object_states(objects)
-            last_log_time = current_time
-            # print(obs_offsets)    # 이걸로 IMM 동작.
+        if timestep == 0 or current_time - last_log_time >= 1.0:
+            offsets = [0, 0, 0]
+            Velocities = [0, 0, 0]
+            Directions = [0, 0, 0]
+            Center_Vel = [0, 0, 0]
+            for obj in objects:
+                offset = cal_offset(obj)
+                velocity, dir = cal_velocity(obj)
+                center_velocity = calculate_center_velocity(obj, center_x, center_y)
+                offsets[obj.id - 1] = offset
+                Velocities[obj.id - 1] = velocity
+                Directions[obj.id - 1] = dir
+                Center_Vel[obj.id - 1] = center_velocity
+                timestep += 1
+            print('Offsets/ obj 1:{}, obj 2:{}, obj 3:{}'.format(offsets[0], offsets[1], offsets[2]))  # 1초마다 객체의 offset 관측 - IMM 재료
+            # print('Velocities/ obj 1, obj 2, obj 3 :{}'.format(Velocities))
+            # print('Directions/ obj 1, obj 2, obj 3 :{}'.format(Directions))
+            print('Center_Vel/ obj 1, obj 2, obj 3 :{}'.format(Center_Vel))     # 1초마다 객체의 (중심점으로의)속도 관측 - IMM 재료
             print()
+            last_log_time = current_time
+
+
+            # # IMM 적용 구간
+            # # 초기 분산 (각 모델의 초기 불확실성)
+            # initial_variances = [1, 4, 9]
+            # # 초기 확률 (모델 초기 가중치)
+            # initial_probs = [round(1/3, 2), round(1/3, 2), round(1/3, 2)]
+            #
+            # for obj in objects:
+            #     imm = IMM(offsets[obj.id - 1], initial_variances, initial_probs)
+            #     imm.draw_PDF()
 
 
         pygame.display.flip()
