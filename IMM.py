@@ -51,8 +51,70 @@ class IMM:
         return TPM
 
     def mixed_prediction(self, TPM, model_prob, state_estimates, distribution_var):
-        tpm = TPM
-        # mu 값을 TPM과 행연산 해야됨.
+        # model_prob 은 np.array(3)
+        # state_estimates 는 np.array(3)
+        # distribution_var 는 np.array(3)
+
+        mixed_mu = np.zeros(3)
+        mixed_bar_q = np.zeros(3)
+        mixed_P = np.zeros(3)
+
+        for j in range(3):  # 모델 j에서 k+1|k
+            mixed_mu[j] = np.sum(TPM[:, j] * model_prob)
+
+        print("Mixed mu: {}".format(mixed_mu))
+
+        for j in range(3):  # 모델 j에서 k+1|k
+            mixed_bar_q[j] = np.sum(TPM[:, j] * model_prob * state_estimates)
+
+        print("Mixed bar q: {}".format(mixed_bar_q))
+
+        for j in range(3):  # 모델 j에서 k+1|k
+            for i in range(3):
+                diff = state_estimates[i] - mixed_bar_q[j]
+                outer_product = np.outer(diff, diff)        # ^top
+                contribution = (TPM[i, j] * model_prob[i]) * (distribution_var[i] + outer_product)
+                mixed_P[j] += contribution
+
+        print("Mixed P: {}".format(mixed_P))
+
+        return mixed_mu, mixed_bar_q, mixed_P
 
 
+    def cal_residual_offset(self, real_obs, mixed_state_estimates):
+        # r_k^i = q_k - \bar{q}_{k+1|k}^j
+        residual_offset = real_obs - mixed_state_estimates
 
+        return residual_offset
+
+    def filter_prediction(self, TPM, mixed_model_prob, mixed_state_estimates, distribution_var, mixed_distribution_var, real_offset):
+        # real_offset 은 실제 관측값
+        residual_offset = np.zeros(3)
+        Lambda = np.zeros(3)
+        filtered_mu = np.zeros(3)
+        filtered_bar_q = mixed_state_estimates  # 그대로 사용
+        filtered_P = np.zeros(3)
+        predicted_real_offset = 0
+
+        for j in range(3):
+            residual_offset[j] = real_offset[j] - mixed_state_estimates[j]
+
+        for j in range(3):
+            Lambda[j] = (np.exp(-0.5 * (residual_offset[j]**2) / mixed_distribution_var[j]) / np.sqrt(2 * np.pi * mixed_distribution_var[j]))
+
+        normalize = np.sum(Lambda * mixed_model_prob)
+        for j in range(3):
+            filtered_mu[j] = (Lambda[j] * mixed_model_prob[j]) / normalize
+
+        print("Filtered mu: {}".format(filtered_mu))
+
+        print("Filtered bar q: {}".format(filtered_bar_q))
+
+        predicted_real_offset = np.sum(filtered_mu * filtered_bar_q)
+
+        for j in range(3):
+            diff = filtered_bar_q[j] - predicted_real_offset[j]
+            outer_product = np.outer(diff, diff)  # ^top
+            filtered_P[j] = mixed_distribution_var[j] + outer_product
+
+        print("Filtered P: {}".format(filtered_P))
