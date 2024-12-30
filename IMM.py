@@ -1,3 +1,4 @@
+import random
 import numpy as np
 from scipy.stats import norm
 import matplotlib
@@ -14,7 +15,10 @@ class IMM:
         self.P = init_distribution_var  # 분포 분산 \mathbf{P}
         self.p_0 = np.eye(3)     # 3x3 단위행렬
 
-
+        print("Setting offset: {}".format(init_state_estimates))
+        print("Setting mu: {}".format(self.mu))
+        print("Setting bar q: {}".format(self.bar_q))
+        print("Setting P: {}".format(self.P))
 
     def draw_PDF(self):     # 다시 만들어야 함.
         # x 값의 범위 설정 (분포가 잘 보일 정도로)
@@ -37,6 +41,13 @@ class IMM:
         # 그래프 표시
         plt.show()
 
+    def normalize(self, array):
+        total = np.sum(array)
+        if total == 0:
+            # 합계가 0인 경우, 배열 그대로 반환하거나 특정 값을 반환
+            return np.zeros_like(array)  # 원래 크기와 동일한 0 배열 반환
+        return array / total
+
     def cal_mean_offset(self, observation):  # input : 관측된 offset / output : 각 RoI 중앙선으로부터 떨어진 평균 offset
         offsets = [observation - r for r in self.RoI_middle_line]
 
@@ -48,7 +59,7 @@ class IMM:
 
         mean_offsets = [np.mean(values) for values in self.offset_list]
 
-        return mean_offsets
+        return mean_offsets  # bar_q
 
     def TPM_get_rho_sigma(self, i, j):
         diff = abs(i - j)
@@ -63,7 +74,7 @@ class IMM:
             sigma = 0
         return rho, sigma
 
-    def generate_TPM(self, dot_q_k):     # input : 실제 관측한 속도값 dot{q}_k / output : Transition Probability Matrix
+    def generate_TPM(self, dot_q_k):     # input : 실제 관측한 속도값 dot{q}_k ::[-1.9, 1.9] / output : Transition Probability Matrix
         p_0_updated = np.zeros((3, 3))      # 3x3 영행렬
 
         for i in range(3):
@@ -78,17 +89,14 @@ class IMM:
 
         # Normalize p_0_updated to get TPM
         TPM = np.zeros((3, 3))
-        print_TPM = np.zeros((3, 3))    # 삭제 필요
 
         for i in range(3):
             row_sum = np.sum(p_0_updated[i, :])
             for j in range(3):
-                TPM[i, j] = (p_0_updated[i, j] / row_sum)
-                print_TPM[i, j] = round((p_0_updated[i, j] / row_sum), 2)   # 삭제 필요
+                TPM[i, j] = round((p_0_updated[i, j] / row_sum), 5)
 
         self.p_0 = TPM   # Update p_0 for the next iteration
-
-        print("Transition Probability Matrix: {}".format(print_TPM))    # 삭제 필요
+        print("Transition Probability Matrix:\n {}".format(TPM))    # 삭제 필요
         return TPM
 
     def mixed_prediction(self, TPM):
@@ -98,69 +106,107 @@ class IMM:
         mixed_mu = np.zeros(3)
         mixed_bar_q = np.zeros(3)
         mixed_P = np.zeros(3)
+
         for j in range(3):  # 모델 j에서 k+1|k
-            mixed_mu[j] = np.sum(TPM[:, j] * self.mu)
-            #정규화 해줘야됨. sum(mixed_mu) = 1 되도록.
+            mixed_mu[j] = np.sum(TPM[:, j].T * self.mu[j])
+        mixed_mu = self.normalize(mixed_mu)
         print("Mixed mu: {}".format(mixed_mu))
+
         for j in range(3):  # 모델 j에서 k+1|k
             mixed_bar_q[j] = np.sum(TPM[:, j] * self.mu * self.bar_q)
         print("Mixed bar q: {}".format(mixed_bar_q))
+
         for j in range(3):  # 모델 j에서 k+1|k
             for i in range(3):
                 diff = self.bar_q[i] - mixed_bar_q[j]
-                outer_product = np.outer(diff, diff)        # ^top
+                outer_product = np.outer(diff, diff)  # ^top
                 contribution = (TPM[i, j] * self.mu[i]) * (self.P[i] + outer_product)
-                print("j, i, Contribution: {}, {}, {}".format(j, i, contribution))
+                # print("j, i, Contribution: {}, {}, {}".format(j, i, contribution))
+                # 일단은 공분산 처음에 크게 나오는거 ok.. 근데 몇 번 더 해보다 보면 적어져야 함. ㅇㅈ?
                 mixed_P[j] += contribution.item()
         print("Mixed P: {}".format(mixed_P))
-        self.mu = mixed_mu
+
+        self.mu = mixed_mu   # Update mu for the next iteration
         return mixed_mu, mixed_bar_q, mixed_P
 
     def cal_residual_offset(self, real_obs, mixed_state_estimates):
         # r_k^i = q_k - \bar{q}_{k+1|k}^j
-        residual_offset = real_obs - mixed_state_estimates
+        # mixed_state_estimates = mixed_bar_q
+        residual_offset = np.zeros(3)
+
+        for j in range(3):
+            residual_offset[j] = real_obs - mixed_state_estimates[j]
+
+        print("Residual offset: {}".format(residual_offset))
         return residual_offset
 
-    def filter_prediction(self, mixed_model_prob, mixed_state_estimates, mixed_distribution_var, real_offset):
-        # real_offset 은 실제 관측값
-        radii = [5, 20, 40]
-        real_offsets = np.array([real_offset - r for r in radii])
-        residual_offset = np.zeros(3)
-        Lambda = np.zeros(3)
-        filtered_mu = np.zeros(3)
+
+        ### 수정 필요. GPT - 차량 모션 예측 설명 page 보고 집중해서 고칠 것.
+    def filter_prediction(self, mixed_model_prob, mixed_state_estimates, mixed_distribution_var, residual_offset):
+        Lambda = np.zeros(3)    # Likelihood
+        filtered_mu = np.zeros(3)   # mixed_model_prob 기반으로 업데이트
         filtered_bar_q = mixed_state_estimates  # 그대로 사용
         filtered_P = np.zeros(3)
-        for j in range(3):
-            residual_offset[j] = real_offsets[j] - mixed_state_estimates[j]
+
         for j in range(3):
             Lambda[j] = (np.exp(-0.5 * (residual_offset[j]**2) / mixed_distribution_var[j]) / np.sqrt(2 * np.pi * mixed_distribution_var[j]))
-        normalize = np.sum(Lambda * mixed_model_prob)
+        normalizing = np.sum(Lambda * mixed_model_prob)
+        if normalizing == 0:
+            normalizing = 1e-8
         for j in range(3):
-            filtered_mu[j] = (Lambda[j] * mixed_model_prob[j]) / normalize
+            filtered_mu[j] = np.nan_to_num((Lambda[j] * mixed_model_prob[j]) / normalizing)  # 우도로 정규화
+        filtered_mu = self.normalize(filtered_mu)   # 최종 정규화
+
         print("Filtered mu: {}".format(filtered_mu))
         print("Filtered bar q: {}".format(filtered_bar_q))
         predicted_next_q = np.sum(filtered_mu * filtered_bar_q)
+
         for j in range(3):
             diff = filtered_bar_q[j] - predicted_next_q
             outer_product = np.outer(diff, diff)  # ^top
             filtered_P[j] = mixed_distribution_var[j] + outer_product
+
         print("Filtered P: {}".format(filtered_P))
         predicted_next_P = np.sum(filtered_mu * filtered_P)
+
         print("Prediction next q, P: {}, {}".format(predicted_next_q, predicted_next_P))
-        # return filtered_mu, filtered_bar_q, filtered_P, predicted_next_q, predicted_next_P
+
+        self.mu = filtered_mu
+        self.bar_q = filtered_bar_q
+        self.P = filtered_P
+
+        return predicted_next_q, predicted_next_P
+
+
 
 if __name__ == "__main__":
     # 초기 확률 (모델 초기 가중치)
-    initial_probs = [round(1/3, 2), round(1/3, 2), round(1/3, 2)]
+    initial_probs = [1/3, 1/3, 1/3]
     # 초기 오프셋 (상태 추정치)
-    init_state_estimates = offset = 50
+    init_state_estimates = offset = 25
     # 초기 분산 (각 모델의 초기 불확실성)
-    initial_variances = [1, 4, 9]
-    imm = IMM(initial_probs, offset, initial_variances)
+    initial_variances = [1, 3, 5]
+    imm = IMM(initial_probs, init_state_estimates, initial_variances)
 
+    for i in range(30):
+        print("{}번째 IMM 진행".format(i))
+        # 속도 랜덤 생성
+        random_velocity = random.uniform(-2, 2)
+        print("객체 속도 : {}".format(random_velocity))
+
+        TPM = imm.generate_TPM(random_velocity)     # 객체 속도 넣으면 TPM 생성
+        mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)  # 예측 단계
+
+        # 위치 랜덤 생성
+        range_limit = 3
+        random_offset = random.randint(offset - range_limit, offset + range_limit)
+        print("객체 위치 : {}".format(random_offset))
+
+        residual_term = imm.cal_residual_offset(random_offset, mixed_bar_q)  # 실제 관측한 객체 위치 q_k 가 48 이다!
+        predicted_next_q, predicted_next_P = imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, residual_term)  # 필터 단계
 
     # # imm.draw_PDF()
-    # TPM = imm.generate_TPM(0.3)
+
     # print("Transition Probability Matrix: \n", TPM)
     # mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)
     # # imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, 14)
