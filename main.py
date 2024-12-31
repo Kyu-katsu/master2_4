@@ -6,7 +6,7 @@ import matplotlib
 matplotlib.use('TkAgg')  # 또는 'Qt5Agg'
 import matplotlib.pyplot as plt
 from scipy.stats import norm
-
+import IMM
 
 # 초기 설정
 def init_settings():
@@ -215,149 +215,149 @@ def cal_velocity(obj):
 #     return offsets
 
 
-
-class IMM:
-    def __init__(self, init_model_prob, init_distribution_var, init_state_estimates):
-        self.model_num = 3  # 모델 개수 M
-        self.mu = init_model_prob  # 모델 확률 \mu
-        self.P = init_distribution_var  # 분포 분산 \mathbf{P}
-        self.bar_q = init_state_estimates  # 상태(오프셋) 추정치 \bar{q}
-        self.p_0 = np.eye(3)  # 3x3 단위행렬
-
-
-    def draw_PDF(self):
-        # x 값의 범위 설정 (분포가 잘 보일 정도로)
-        x_values = np.linspace(-25, 75, 100)
-
-        # 그래프 그리기
-        plt.figure(figsize=(10, 6))
-
-        # 각 분포에 대해 PDF를 그리기
-        for i in range(self.model_num):
-            plt.plot(x_values, self.bar_q[i].pdf(x_values),
-                     label=f'Model {i + 1} (μ={self.mu[i]}, σ={np.sqrt(self.P[i]):.2f})')
-
-        # RoI 분할
-        plt.axvspan(0, 10, color='red', alpha=0.1, label="Highlighted Region")
-        plt.axvspan(10, 30, color='green', alpha=0.1, label="Highlighted Region")
-        plt.axvspan(30, 50, color='blue', alpha=0.1, label="Highlighted Region")
-
-        # 그래프 설정
-        plt.title('Normal Distributions for Each Model')
-        plt.xlabel('x')
-        plt.ylabel('Probability Density')
-        plt.legend()
-
-        # 그래프 표시
-        plt.show()
-
-    def TPM_get_rho_sigma(self, i, j):
-        diff = abs(i - j)
-        if diff == 1:
-            rho = np.sign(i - j) * 0.41
-            sigma = 0.14
-        elif diff == 2:
-            rho = np.sign(i - j) * 0.88
-            sigma = 0.20
-        else:  # p_{11}, p_{22}, p_{33}
-            rho = 0
-            sigma = 0
-        return rho, sigma
-
-    def generate_TPM(self, p_0, dot_q_k):  # input : 실제 관측값 dot{q}_k / output : Transition Probability Matrix
-        p_0_updated = np.zeros((3, 3))  # 3x3 영행렬
-
-        for i in range(3):
-            for j in range(3):
-                if i == j:
-                    epsilon = 0  # p_{11}, p_{22}, p_{33}
-                else:
-                    rho, sigma = self.TPM_get_rho_sigma(i, j)
-                    epsilon = norm.pdf(dot_q_k, loc=rho, scale=sigma).mean()
-
-                p_0_updated[i, j] = p_0[i, j] + epsilon  # Update p_{0,ij}
-
-        # Normalize p_0_updated to get TPM
-        TPM = np.zeros((3, 3))
-
-        for i in range(3):
-            row_sum = np.sum(p_0_updated[i, :])
-            for j in range(3):
-                TPM[i, j] = p_0_updated[i, j] / row_sum
-
-        p_0 = TPM  # p_0 갱신
-
-        return p_0, TPM
-
-    def mixed_prediction(self, TPM, model_prob, state_estimates, distribution_var):
-        # model_prob 은 np.array(3)
-        # state_estimates 는 np.array(3)
-        # distribution_var 는 np.array(3)
-
-        mixed_mu = np.zeros(3)
-        mixed_bar_q = np.zeros(3)
-        mixed_P = np.zeros(3)
-
-        for j in range(3):  # 모델 j에서 k+1|k
-            mixed_mu[j] = np.sum(TPM[:, j] * model_prob)
-
-        print("Mixed mu: {}".format(mixed_mu))
-
-        for j in range(3):  # 모델 j에서 k+1|k
-            mixed_bar_q[j] = np.sum(TPM[:, j] * model_prob * state_estimates)
-
-        print("Mixed bar q: {}".format(mixed_bar_q))
-
-        for j in range(3):  # 모델 j에서 k+1|k
-            for i in range(3):
-                diff = state_estimates[i] - mixed_bar_q[j]
-                outer_product = np.outer(diff, diff)  # ^top
-                contribution = (TPM[i, j] * model_prob[i]) * (distribution_var[i] + outer_product)
-                mixed_P[j] += contribution
-
-        print("Mixed P: {}".format(mixed_P))
-
-        return mixed_mu, mixed_bar_q, mixed_P
-
-    def cal_residual_offset(self, real_obs, mixed_state_estimates):
-        # r_k^i = q_k - \bar{q}_{k+1|k}^j
-        residual_offset = real_obs - mixed_state_estimates
-
-        return residual_offset
-
-    def filter_prediction(self, TPM, mixed_model_prob, mixed_state_estimates, distribution_var, mixed_distribution_var,
-                          real_offset):
-        # real_offset 은 실제 관측값
-        residual_offset = np.zeros(3)
-        Lambda = np.zeros(3)
-        filtered_mu = np.zeros(3)
-        filtered_bar_q = mixed_state_estimates  # 그대로 사용
-        filtered_P = np.zeros(3)
-        predicted_real_offset = 0
-
-        for j in range(3):
-            residual_offset[j] = real_offset[j] - mixed_state_estimates[j]
-
-        for j in range(3):
-            Lambda[j] = (np.exp(-0.5 * (residual_offset[j] ** 2) / mixed_distribution_var[j]) / np.sqrt(
-                2 * np.pi * mixed_distribution_var[j]))
-
-        normalize = np.sum(Lambda * mixed_model_prob)
-        for j in range(3):
-            filtered_mu[j] = (Lambda[j] * mixed_model_prob[j]) / normalize
-
-        print("Filtered mu: {}".format(filtered_mu))
-
-        print("Filtered bar q: {}".format(filtered_bar_q))
-
-        predicted_real_offset = np.sum(filtered_mu * filtered_bar_q)
-
-        for j in range(3):
-            diff = filtered_bar_q[j] - predicted_real_offset[j]
-            outer_product = np.outer(diff, diff)  # ^top
-            filtered_P[j] = mixed_distribution_var[j] + outer_product
-
-        print("Filtered P: {}".format(filtered_P))
+###
+# class IMM:
+#     def __init__(self, init_model_prob, init_distribution_var, init_state_estimates):
+#         self.model_num = 3  # 모델 개수 M
+#         self.mu = init_model_prob  # 모델 확률 \mu
+#         self.P = init_distribution_var  # 분포 분산 \mathbf{P}
+#         self.bar_q = init_state_estimates  # 상태(오프셋) 추정치 \bar{q}
+#         self.p_0 = np.eye(3)  # 3x3 단위행렬
+#
+#
+#     def draw_PDF(self):
+#         # x 값의 범위 설정 (분포가 잘 보일 정도로)
+#         x_values = np.linspace(-25, 75, 100)
+#
+#         # 그래프 그리기
+#         plt.figure(figsize=(10, 6))
+#
+#         # 각 분포에 대해 PDF를 그리기
+#         for i in range(self.model_num):
+#             plt.plot(x_values, self.bar_q[i].pdf(x_values),
+#                      label=f'Model {i + 1} (μ={self.mu[i]}, σ={np.sqrt(self.P[i]):.2f})')
+#
+#         # RoI 분할
+#         plt.axvspan(0, 10, color='red', alpha=0.1, label="Highlighted Region")
+#         plt.axvspan(10, 30, color='green', alpha=0.1, label="Highlighted Region")
+#         plt.axvspan(30, 50, color='blue', alpha=0.1, label="Highlighted Region")
+#
+#         # 그래프 설정
+#         plt.title('Normal Distributions for Each Model')
+#         plt.xlabel('x')
+#         plt.ylabel('Probability Density')
+#         plt.legend()
+#
+#         # 그래프 표시
+#         plt.show()
+#
+#     def TPM_get_rho_sigma(self, i, j):
+#         diff = abs(i - j)
+#         if diff == 1:
+#             rho = np.sign(i - j) * 0.41
+#             sigma = 0.14
+#         elif diff == 2:
+#             rho = np.sign(i - j) * 0.88
+#             sigma = 0.20
+#         else:  # p_{11}, p_{22}, p_{33}
+#             rho = 0
+#             sigma = 0
+#         return rho, sigma
+#
+#     def generate_TPM(self, p_0, dot_q_k):  # input : 실제 관측값 dot{q}_k / output : Transition Probability Matrix
+#         p_0_updated = np.zeros((3, 3))  # 3x3 영행렬
+#
+#         for i in range(3):
+#             for j in range(3):
+#                 if i == j:
+#                     epsilon = 0  # p_{11}, p_{22}, p_{33}
+#                 else:
+#                     rho, sigma = self.TPM_get_rho_sigma(i, j)
+#                     epsilon = norm.pdf(dot_q_k, loc=rho, scale=sigma).mean()
+#
+#                 p_0_updated[i, j] = p_0[i, j] + epsilon  # Update p_{0,ij}
+#
+#         # Normalize p_0_updated to get TPM
+#         TPM = np.zeros((3, 3))
+#
+#         for i in range(3):
+#             row_sum = np.sum(p_0_updated[i, :])
+#             for j in range(3):
+#                 TPM[i, j] = p_0_updated[i, j] / row_sum
+#
+#         p_0 = TPM  # p_0 갱신
+#
+#         return p_0, TPM
+#
+#     def mixed_prediction(self, TPM, model_prob, state_estimates, distribution_var):
+#         # model_prob 은 np.array(3)
+#         # state_estimates 는 np.array(3)
+#         # distribution_var 는 np.array(3)
+#
+#         mixed_mu = np.zeros(3)
+#         mixed_bar_q = np.zeros(3)
+#         mixed_P = np.zeros(3)
+#
+#         for j in range(3):  # 모델 j에서 k+1|k
+#             mixed_mu[j] = np.sum(TPM[:, j] * model_prob)
+#
+#         print("Mixed mu: {}".format(mixed_mu))
+#
+#         for j in range(3):  # 모델 j에서 k+1|k
+#             mixed_bar_q[j] = np.sum(TPM[:, j] * model_prob * state_estimates)
+#
+#         print("Mixed bar q: {}".format(mixed_bar_q))
+#
+#         for j in range(3):  # 모델 j에서 k+1|k
+#             for i in range(3):
+#                 diff = state_estimates[i] - mixed_bar_q[j]
+#                 outer_product = np.outer(diff, diff)  # ^top
+#                 contribution = (TPM[i, j] * model_prob[i]) * (distribution_var[i] + outer_product)
+#                 mixed_P[j] += contribution
+#
+#         print("Mixed P: {}".format(mixed_P))
+#
+#         return mixed_mu, mixed_bar_q, mixed_P
+#
+#     def cal_residual_offset(self, real_obs, mixed_state_estimates):
+#         # r_k^i = q_k - \bar{q}_{k+1|k}^j
+#         residual_offset = real_obs - mixed_state_estimates
+#
+#         return residual_offset
+#
+#     def filter_prediction(self, TPM, mixed_model_prob, mixed_state_estimates, distribution_var, mixed_distribution_var,
+#                           real_offset):
+#         # real_offset 은 실제 관측값
+#         residual_offset = np.zeros(3)
+#         Lambda = np.zeros(3)
+#         filtered_mu = np.zeros(3)
+#         filtered_bar_q = mixed_state_estimates  # 그대로 사용
+#         filtered_P = np.zeros(3)
+#         predicted_real_offset = 0
+#
+#         for j in range(3):
+#             residual_offset[j] = real_offset[j] - mixed_state_estimates[j]
+#
+#         for j in range(3):
+#             Lambda[j] = (np.exp(-0.5 * (residual_offset[j] ** 2) / mixed_distribution_var[j]) / np.sqrt(
+#                 2 * np.pi * mixed_distribution_var[j]))
+#
+#         normalize = np.sum(Lambda * mixed_model_prob)
+#         for j in range(3):
+#             filtered_mu[j] = (Lambda[j] * mixed_model_prob[j]) / normalize
+#
+#         print("Filtered mu: {}".format(filtered_mu))
+#
+#         print("Filtered bar q: {}".format(filtered_bar_q))
+#
+#         predicted_real_offset = np.sum(filtered_mu * filtered_bar_q)
+#
+#         for j in range(3):
+#             diff = filtered_bar_q[j] - predicted_real_offset[j]
+#             outer_product = np.outer(diff, diff)  # ^top
+#             filtered_P[j] = mixed_distribution_var[j] + outer_product
+#
+#         print("Filtered P: {}".format(filtered_P))
 
 
 # class IMM:
@@ -486,7 +486,7 @@ def main():
     screen, clock = init_pygame()
 
     # 객체 생성 (ID 부여)
-    objects = [DynamicObject(id=i + 1) for i in range(3)]
+    objects = [DynamicObject(id=i + 1) for i in range(1)]   # 객체 마릿수 지정
     last_log_time = time.time()
 
     timestep = 0  # Time step counter
@@ -535,6 +535,22 @@ def main():
             print()
             last_log_time = current_time
 
+            initial_probs = [1/3, 1/3, 1/3]
+            initial_variances = [1, 3, 5]
+            for obj in objects:
+                imm = IMM.IMM(initial_probs, offsets[obj.id - 1], initial_variances)
+
+                print("중심 방향 객체 속도 : {}".format(Center_Vel[obj.id - 1]))
+
+                TPM = imm.generate_TPM(Center_Vel[obj.id - 1])     # 객체 속도 넣으면 TPM 생성
+                mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)  # 예측 단계
+
+                print("객체 위치 : {}".format(offsets[obj.id - 1]))
+
+                residual_term = imm.cal_residual_offset(offsets[obj.id - 1], mixed_bar_q)  # 실제 관측한 객체 위치 q_k 가 48 이다!
+                predicted_next_q, predicted_next_P = imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, residual_term)  # 필터 단계
+
+                imm.draw_PDF()
 
             # IMM 적용 구간
             # # 초기 분산 (각 모델의 초기 불확실성)

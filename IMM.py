@@ -1,9 +1,11 @@
 import random
+import matplotlib
 import numpy as np
-from scipy.stats import norm
 import matplotlib
 matplotlib.use('TkAgg')  # 또는 'Qt5Agg'
 import matplotlib.pyplot as plt
+from scipy.stats import norm
+
 
 class IMM:
     def __init__(self, init_model_prob, init_state_estimates, init_distribution_var):
@@ -20,24 +22,33 @@ class IMM:
         print("Setting bar q: {}".format(self.bar_q))
         print("Setting P: {}".format(self.P))
 
-    def draw_PDF(self):     # 다시 만들어야 함.
+    def draw_PDF(self):
         # x 값의 범위 설정 (분포가 잘 보일 정도로)
         x_values = np.linspace(-25, 75, 100)
+
         # 그래프 그리기
         plt.figure(figsize=(10, 6))
+
         # 각 분포에 대해 PDF를 그리기
         for i in range(self.model_num):
-            plt.plot(x_values, self.bar_q[i].pdf(x_values),
-                     label=f'Model {i + 1} (μ={self.mu[i]}, σ={np.sqrt(self.P[i]):.2f})')
+            # 정규분포 객체 생성
+            normal_dist = norm(loc=self.bar_q[i], scale=np.sqrt(self.P[i]))
+
+            # PDF 계산 및 그리기
+            pdf_values = normal_dist.pdf(x_values)
+            plt.plot(x_values, pdf_values, label=f'Model {i + 1} (predicted offset={self.bar_q[i]}, predicted variance={np.sqrt(self.P[i]):.2f})')
+
         # RoI 분할
         plt.axvspan(0, 10, color='red', alpha=0.1, label="Highlighted Region")
         plt.axvspan(10, 30, color='green', alpha=0.1, label="Highlighted Region")
         plt.axvspan(30, 50, color='blue', alpha=0.1, label="Highlighted Region")
+
         # 그래프 설정
         plt.title('Normal Distributions for Each Model')
         plt.xlabel('x')
         plt.ylabel('Probability Density')
         plt.legend()
+
         # 그래프 표시
         plt.show()
 
@@ -49,7 +60,7 @@ class IMM:
         return array / total
 
     def cal_mean_offset(self, observation):  # input : 관측된 offset / output : 각 RoI 중앙선으로부터 떨어진 평균 offset
-        offsets = [observation - r for r in self.RoI_middle_line]
+        offsets = [observation[0] - r for r in self.RoI_middle_line]
 
         if not self.offset_list:  # 처음 호출될 경우 offsets_list 초기화
             self.offset_list = [[value] for value in offsets]
@@ -178,39 +189,39 @@ class IMM:
         return predicted_next_q, predicted_next_P
 
 
-
-if __name__ == "__main__":
-    # 초기 확률 (모델 초기 가중치)
-    initial_probs = [1/3, 1/3, 1/3]
-    # 초기 오프셋 (상태 추정치)
-    init_state_estimates = offset = 25
-    # 초기 분산 (각 모델의 초기 불확실성)
-    initial_variances = [1, 3, 5]
-    imm = IMM(initial_probs, init_state_estimates, initial_variances)
-
-    for i in range(30):
-        print("{}번째 IMM 진행".format(i))
-        # 속도 랜덤 생성
-        random_velocity = random.uniform(-2, 2)
-        print("객체 속도 : {}".format(random_velocity))
-
-        TPM = imm.generate_TPM(random_velocity)     # 객체 속도 넣으면 TPM 생성
-        mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)  # 예측 단계
-
-        # 위치 랜덤 생성
-        range_limit = 3
-        random_offset = random.randint(offset - range_limit, offset + range_limit)
-        print("객체 위치 : {}".format(random_offset))
-
-        residual_term = imm.cal_residual_offset(random_offset, mixed_bar_q)  # 실제 관측한 객체 위치 q_k 가 48 이다!
-        predicted_next_q, predicted_next_P = imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, residual_term)  # 필터 단계
-
-    # # imm.draw_PDF()
-
-    # print("Transition Probability Matrix: \n", TPM)
-    # mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)
-    # # imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, 14)
-    #
+#
+# if __name__ == "__main__":
+#     # 초기 확률 (모델 초기 가중치)
+#     initial_probs = [1/3, 1/3, 1/3]
+#     # 초기 오프셋 (상태 추정치)
+#     init_state_estimates = offset = 25
+#     # 초기 분산 (각 모델의 초기 불확실성)
+#     initial_variances = [1, 3, 5]
+#     imm = IMM(initial_probs, init_state_estimates, initial_variances)
+#
+#     for i in range(30):
+#         print("{}번째 IMM 진행".format(i))
+#         # 속도 랜덤 생성
+#         random_velocity = random.uniform(-2, 2)
+#         print("객체 속도 : {}".format(random_velocity))
+#
+#         TPM = imm.generate_TPM(random_velocity)     # 객체 속도 넣으면 TPM 생성
+#         mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)  # 예측 단계
+#
+#         # 위치 랜덤 생성
+#         range_limit = 3
+#         random_offset = random.randint(offset - range_limit, offset + range_limit)
+#         print("객체 위치 : {}".format(random_offset))
+#
+#         residual_term = imm.cal_residual_offset(random_offset, mixed_bar_q)  # 실제 관측한 객체 위치 q_k 가 48 이다!
+#         predicted_next_q, predicted_next_P = imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, residual_term)  # 필터 단계
+#
+#         imm.draw_PDF()
+#
+#     # print("Transition Probability Matrix: \n", TPM)
+#     # mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)
+#     # # imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, 14)
+#     #
 
 
 
