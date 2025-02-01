@@ -16,6 +16,7 @@ class IMM:
         self.bar_q = self.cal_mean_offset(init_state_estimates)   # 상태(오프셋) 추정치 \bar{q}  평균 오프셋으로 계산 한번 진행
         self.P = init_distribution_var  # 분포 분산 \mathbf{P}
         self.p_0 = np.eye(3)     # 3x3 단위행렬
+        self.lane_width = 4
 
         print("Setting offset: {}".format(init_state_estimates))
         print("Setting mu: {}".format(self.mu))
@@ -59,7 +60,19 @@ class IMM:
             return np.zeros_like(array)  # 원래 크기와 동일한 0 배열 반환
         return array / total
 
+    def row_wise_normalization(self, matrix):
+        """
+        행 기준 정규화를 수행하는 함수.
+
+        :param matrix: (numpy array) 정규화할 행렬
+        :return: (numpy array) 각 행의 합이 1이 되도록 정규화된 행렬
+        """
+        row_sums = matrix.sum(axis=1, keepdims=True)  # 각 행의 합 계산
+        row_sums[row_sums == 0] = 1  # 0으로 나누는 오류 방지
+        return matrix / row_sums  # 행 기준 정규화 수행
+
     def cal_mean_offset(self, observation):  # input : 관측된 offset / output : 각 RoI 중앙선으로부터 떨어진 평균 offset
+        observation = [observation]
         offsets = [observation[0] - r for r in self.RoI_middle_line]
 
         if not self.offset_list:  # 처음 호출될 경우 offsets_list 초기화
@@ -110,31 +123,38 @@ class IMM:
         print("Transition Probability Matrix:\n {}".format(TPM))    # 삭제 필요
         return TPM
 
-    def mixed_prediction(self, TPM):
+    def mixed_prediction(self, TPM):    # 혼합 단계, Interaction(Mixing) Step in CRAA paper.
         # model_prob 은 np.array(3)
         # state_estimates 는 np.array(3)
         # distribution_var 는 np.array(3)
         mixed_mu = np.zeros(3)
+        mixed_ratio = np.zeros((3, 3))
         mixed_bar_q = np.zeros(3)
         mixed_P = np.zeros(3)
 
-        for j in range(3):  # 모델 j에서 k+1|k
-            mixed_mu[j] = np.sum(TPM[:, j].T * self.mu[j])
+        for j in range(3):  # 혼합 모델 확률, \mu_{k+1|k}^{j}
+            mixed_mu[j] = np.sum(TPM[:, j].T * self.mu)
         mixed_mu = self.normalize(mixed_mu)
         print("Mixed mu: {}".format(mixed_mu))
 
-        for j in range(3):  # 모델 j에서 k+1|k
-            mixed_bar_q[j] = np.sum(TPM[:, j] * self.mu * self.bar_q)
+        for i in range(3):  # 혼합 비율, \mu_{k+1|k}^{i|j} = \mu_{k+1|k}^{ij}
+            for j in range(3):
+                if mixed_mu[j] != 0:  # 0으로 나누는 오류 방지
+                    mixed_ratio[i, j] = (TPM[i, j] * self.mu[i]) / mixed_mu[j]
+        mixed_ratio = self.row_wise_normalization(mixed_ratio)
+        print("Mixed ratio: {}".format(mixed_ratio))
+
+        for j in range(3):  # 혼합 상태 추정치, \hat{q}_{k+1|k}^j
+            mixed_bar_q[j] = np.sum(mixed_ratio[:, j].T * self.bar_q)
         print("Mixed bar q: {}".format(mixed_bar_q))
 
-        for j in range(3):  # 모델 j에서 k+1|k
+        Q = np.random.normal(loc=0, scale=(self.lane_width / 4) ** 2, size=3)  # Q[j] 생성 (정규분포), lane_width = 4
+        for j in range(3):  # 혼합 오차 공분산, \mathbb{P}_{k+1|k}^j
+            sum_value = 0
             for i in range(3):
-                diff = self.bar_q[i] - mixed_bar_q[j]
-                outer_product = np.outer(diff, diff)  # ^top
-                contribution = (TPM[i, j] * self.mu[i]) * (self.P[i] + outer_product)
-                # print("j, i, Contribution: {}, {}, {}".format(j, i, contribution))
-                # 일단은 공분산 처음에 크게 나오는거 ok.. 근데 몇 번 더 해보다 보면 적어져야 함. ㅇㅈ?
-                mixed_P[j] += contribution.item()
+                diff = self.bar_q[i] - mixed_bar_q[i]
+                sum_value += mixed_ratio[i][j] * (Q[j] + diff * diff)   # 가중합 계산
+            mixed_P[j] = sum_value
         print("Mixed P: {}".format(mixed_P))
 
         self.mu = mixed_mu   # Update mu for the next iteration
@@ -189,39 +209,39 @@ class IMM:
         return predicted_next_q, predicted_next_P
 
 
-#
-# if __name__ == "__main__":
-#     # 초기 확률 (모델 초기 가중치)
-#     initial_probs = [1/3, 1/3, 1/3]
-#     # 초기 오프셋 (상태 추정치)
-#     init_state_estimates = offset = 25
-#     # 초기 분산 (각 모델의 초기 불확실성)
-#     initial_variances = [1, 3, 5]
-#     imm = IMM(initial_probs, init_state_estimates, initial_variances)
-#
-#     for i in range(30):
-#         print("{}번째 IMM 진행".format(i))
-#         # 속도 랜덤 생성
-#         random_velocity = random.uniform(-2, 2)
-#         print("객체 속도 : {}".format(random_velocity))
-#
-#         TPM = imm.generate_TPM(random_velocity)     # 객체 속도 넣으면 TPM 생성
-#         mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)  # 예측 단계
-#
-#         # 위치 랜덤 생성
-#         range_limit = 3
-#         random_offset = random.randint(offset - range_limit, offset + range_limit)
-#         print("객체 위치 : {}".format(random_offset))
-#
-#         residual_term = imm.cal_residual_offset(random_offset, mixed_bar_q)  # 실제 관측한 객체 위치 q_k 가 48 이다!
-#         predicted_next_q, predicted_next_P = imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, residual_term)  # 필터 단계
-#
-#         imm.draw_PDF()
-#
-#     # print("Transition Probability Matrix: \n", TPM)
-#     # mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)
-#     # # imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, 14)
-#     #
+
+if __name__ == "__main__":
+    # 초기 확률 (모델 초기 가중치)
+    initial_probs = [1/3, 1/3, 1/3]
+    # 초기 오프셋 (상태 추정치)
+    init_state_estimates = offset = 25
+    # 초기 분산 (각 모델의 초기 불확실성)
+    initial_variances = [1, 3, 5]
+    imm = IMM(initial_probs, init_state_estimates, initial_variances)
+
+    for i in range(30):
+        print("{}번째 IMM 진행".format(i + 1))
+        # 속도 랜덤 생성
+        random_velocity = random.uniform(-2, 2)
+        print("객체 속도 : {}".format(random_velocity))
+
+        TPM = imm.generate_TPM(random_velocity)     # 객체 속도 넣으면 TPM 생성
+        mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)  # 예측 단계
+
+        # 위치 랜덤 생성
+        range_limit = 3
+        random_offset = random.randint(offset - range_limit, offset + range_limit)
+        print("객체 위치 : {}".format(random_offset))
+
+        residual_term = imm.cal_residual_offset(random_offset, mixed_bar_q)  # 실제 관측한 객체 위치 q_k 가 48 이다!
+        predicted_next_q, predicted_next_P = imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, residual_term)  # 필터 단계
+
+        imm.draw_PDF()
+
+    # print("Transition Probability Matrix: \n", TPM)
+    # mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)
+    # # imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, 14)
+    #
 
 
 

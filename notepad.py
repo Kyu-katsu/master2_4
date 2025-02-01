@@ -46,7 +46,23 @@ from scipy.stats import norm
 # print(0.2*p_1[0, 0] + 0.3*p_1[1, 0] + 0.5*p_1[2, 0])
 # print(result)
 
-a = [1, 5, 3]
-b = [4, 2, 8]
-normalize = np.sum(a * b)
-print(normalize)
+def normalize(array):
+    total = np.sum(array)
+    if total == 0:
+        # 합계가 0인 경우, 배열 그대로 반환하거나 특정 값을 반환
+        return np.zeros_like(array)  # 원래 크기와 동일한 0 배열 반환
+    return array / total
+
+
+
+mixed_mu = np.zeros(3)
+TPM = [[0.3, 0.4, 0.3],[0.2, 0.6, 0.2],[0.1, 0.3, 0.6]]
+mu = [0.5, 0.2, 0.3]
+TPM = np.array(TPM)
+
+for j in range(3):  # 모델 j에서 k+1|k, \mu_{k+1|k}^{j}
+    print('TPM: {}'.format(TPM[:, j].T))
+    print('mu: {}'.format(mu))
+    mixed_mu[j] = np.sum(TPM[:, j].T * mu)
+mixed_mu = normalize(mixed_mu)
+print("Mixed mu: {}".format(mixed_mu))
