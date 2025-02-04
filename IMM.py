@@ -37,9 +37,6 @@ class IMM:
         x_values = np.linspace(-4, 16, 100)
         plt.title('Normal Distributions for Each Model')
 
-        # 그래프 그리기
-        # plt.figure(figsize=(10, 6))
-
         # 각 차선별 분포에 대해 PDF를 그리기
         for i in range(self.model_num):
             # 정규분포 객체 생성
