@@ -486,7 +486,8 @@ def main():
     screen, clock = init_pygame()
 
     # 객체 생성 (ID 부여)
-    objects = [DynamicObject(id=i + 1) for i in range(1)]   # 객체 마릿수 지정
+    num_objects = 3  # 다중 객체 수
+    objects = [DynamicObject(id=i + 1) for i in range(num_objects)]   # 객체 마릿수 지정
     last_log_time = time.time()
 
     timestep = 0  # Time step counter

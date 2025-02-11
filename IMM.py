@@ -14,7 +14,7 @@ class IMM:
         self.RoI_middle_line = [2, 6, 10]
         self.mu = init_model_prob   # 모델 확률 \mu
         self.bar_q = [2, 6, 10]
-        # (중요) bar_q는 각 차선마다 계산되는 값인거고, 모델 확률(\mu)에 따라서 진짜 그 차선에서 그 정도의 오프셋을 가지고 존재할지를 판단할 수 있는 것.
+        # (중요) bar_q는 각 차선마다 고정된 값인거고, 모델 확률(\mu)에 따라서 진짜 그 차선에서 존재하는지를 판단할 수 있는 것.
         self.P = init_distribution_var  # 분포 분산 \mathbf{P}
         self.p_0 = np.array([[0.94, 0.05, 0.01],
                              [0.05, 0.90, 0.05],
@@ -22,7 +22,7 @@ class IMM:
         self.lane_width = 4
 
         # draw
-        self.time_steps = 10    # iteration 횟수
+        self.time_steps = 100    # iteration 횟수
         self.mu_values = np.zeros((self.time_steps, self.model_num))
         # self.mu_values[0] = self.mu  # mu_values 초기값 설정
         self.pos_values = np.zeros(self.time_steps)
@@ -112,6 +112,17 @@ class IMM:
             row_sums[row_sums == 0] = 1  # 0으로 나누는 오류 방지
             return matrix / row_sums
 
+    def cal_residual_offset(self, real_obs, mixed_state_estimates):
+        # r_k^i = q_k - \bar{q}_{k+1|k}^j
+        # mixed_state_estimates = mixed_bar_q
+        residual_offset = np.zeros(3)
+
+        for j in range(3):
+            residual_offset[j] = real_obs - mixed_state_estimates[j]
+
+        print("Residual offset: {}".format(residual_offset))
+        return residual_offset
+
 
     def TPM_get_rho_sigma(self, i, j):
         diff = abs(i - j)
@@ -132,10 +143,9 @@ class IMM:
         for i in range(3):
             for j in range(3):
                 rho, sigma = self.TPM_get_rho_sigma(i, j)
-                pdf_value = norm.pdf(dot_q_k, loc=rho, scale=sigma)
-                cdf_value = norm.cdf(dot_q_k, loc=rho, scale=sigma)
 
                 # # Use CDF
+                # cdf_value = norm.cdf(dot_q_k, loc=rho, scale=sigma)
                 # if i == j:      # p_{11}, p_{22}, p_{33}
                 #     epsilon = 0
                 # else:
@@ -145,11 +155,13 @@ class IMM:
                 #         epsilon = cdf_value
 
                 # Use PDF
+                pdf_value = norm.pdf(dot_q_k, loc=rho, scale=sigma)
                 if i == j:      # p_{11}, p_{22}, p_{33}
                     epsilon = 0
                 else:
                     epsilon = pdf_value
 
+                # p_0_update calculate
                 p_0_updated[i, j] = self.p_0[i, j] + epsilon
 
         print("Before Normalize TPM, p_(0, ij):\n {}".format(p_0_updated))    # 시험 출력
@@ -231,7 +243,7 @@ if __name__ == "__main__":
     imm = IMM(initial_probs, init_state_estimates, initial_variances)
 
     # 속도 제어
-    time_steps = 10
+    time_steps = 100
     vel_min, vel_max = -1.2, 1.2
     t = np.linspace(0, np.pi, time_steps)  # 0에서 π까지 10개의 점 생성
     # velocity_values = vel_min + (vel_max - vel_min) * (1 + np.cos(t)) / 2  # + -> -
