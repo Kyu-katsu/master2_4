@@ -187,7 +187,6 @@ class IMM:
         print("Mixed bar q: {}".format(mixed_bar_q))
 
         Q = np.random.normal(loc=0, scale=(self.lane_width / 4) ** 2, size=3)  # Q[j] 생성(1x3) (정규분포), lane_width = 4
-        print("??? : {}".format(Q))
         # 근데 사실상 Q가 의미가 없음. 논문에서 P를 예측하는 식에서는 잘못 작성된거라 Q는 당장은 상관없지만, 추후에 \mu와 \P를 모두 반영하여 신뢰도를 줘야 할 듯.
 
         for j in range(3):  # 혼합 오차 공분산, \mathbb{P}_{k|k-1}^j
@@ -232,7 +231,8 @@ if __name__ == "__main__":
 
     # 속도 제어
     time_steps = 10
-    vel_min, vel_max = -1.2, 1.2
+    #vel_min, vel_max = 0.8, -0.8
+    vel_min, vel_max = -0.8, 0.8
     t = np.linspace(0, np.pi, time_steps)  # 0에서 π까지 10개의 점 생성
     # velocity_values = vel_min + (vel_max - vel_min) * (1 + np.cos(t)) / 2  # + -> -
     velocity_values = vel_max - (vel_max - vel_min) * (1 + np.cos(t)) / 2  # - -> +
@@ -253,6 +253,7 @@ if __name__ == "__main__":
         curr_position = position - (curr_velocity + noise)
         position_limits = (0, 12)
         curr_position = max(position_limits[0], min(position_limits[1], curr_position))
+
         print("객체 위치 : {}".format(curr_position))
         if curr_position <= 4:
             roi = 1
@@ -265,11 +266,13 @@ if __name__ == "__main__":
         imm.pos_values[i] = position
 
         # 2)Model Probability Update
-        residual_term = imm.cal_residual_offset(curr_position, mixed_bar_q)
+        #residual_term = imm.cal_residual_offset(curr_position, mixed_bar_q)
+        residual_term = curr_position - mixed_bar_q
         filtered_mu = imm.filter_prediction(mixed_mu, mixed_P, residual_term)  # 필터 단계, \mu만 갱신
         imm.mu_values[i] = filtered_mu
         print("Filtered mu: {}".format(filtered_mu))
         print("RoI {}에 있을 확률 제일 높".format(np.argmax(filtered_mu)+1))
+        print("=============================================================")
 
     imm.draw_PDF()
 
