@@ -16,7 +16,7 @@ import time
 # 초기 설정
 def init_settings():
     global WIDTH, HEIGHT, SPACE_SIZE, SCALE, WHITE, RED, GREEN, BLUE, BLACK, CENTER_X, CENTER_Y
-    WIDTH, HEIGHT = 1000, 1000
+    WIDTH, HEIGHT = 800, 800
     SPACE_SIZE = 25
     SCALE = WIDTH // SPACE_SIZE
     CENTER_X, CENTER_Y = 12.5, 12.5
@@ -459,4 +459,4 @@ def main_timesteps_simple(time_steps):
 # 실행
 if __name__ == "__main__":
     #main_timesteps(100)
-    main_timesteps_simple(100)
+    main_timesteps_simple(10000)

@@ -148,6 +148,9 @@ def draw_velocity_arrows(screen, obj, center_x, center_y):
     # y축 속도 화살표 (파란색)
     draw_arrow(BLUE, start_pos, (0, obj.vy))
 
+    # # 중심점 방향 속력 화살표 (검은색)
+    # draw_arrow(BLACK, start_pos, (obj.vx, obj.vy))
+
     # 중심점 방향 속도 화살표 (빨간색)
     # 중심점과 객체 간 방향 벡터 계산
     vcx = center_x / SCALE - obj.x  # 중심점으로의 x축 방향
@@ -538,20 +541,20 @@ def main():
 
             initial_probs = [1/3, 1/3, 1/3]
             initial_variances = [1, 3, 5]
-            for obj in objects:
-                imm = IMM.IMM(initial_probs, offsets[obj.id - 1], initial_variances)
-
-                print("중심 방향 객체 속도 : {}".format(Center_Vel[obj.id - 1]))
-
-                TPM = imm.generate_TPM(Center_Vel[obj.id - 1])     # 객체 속도 넣으면 TPM 생성
-                mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)  # 예측 단계
-
-                print("객체 위치 : {}".format(offsets[obj.id - 1]))
-
-                residual_term = imm.cal_residual_offset(offsets[obj.id - 1], mixed_bar_q)  # 실제 관측한 객체 위치 q_k 가 48 이다!
-                predicted_next_q, predicted_next_P = imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, residual_term)  # 필터 단계
-
-                imm.draw_PDF()
+            # for obj in objects:
+            #     imm = IMM.IMM(initial_probs, offsets[obj.id - 1], initial_variances)
+            #
+            #     print("중심 방향 객체 속도 : {}".format(Center_Vel[obj.id - 1]))
+            #
+            #     TPM = imm.generate_TPM(Center_Vel[obj.id - 1])     # 객체 속도 넣으면 TPM 생성
+            #     mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)  # 예측 단계
+            #
+            #     print("객체 위치 : {}".format(offsets[obj.id - 1]))
+            #
+            #     residual_term = imm.cal_residual_offset(offsets[obj.id - 1], mixed_bar_q)  # 실제 관측한 객체 위치 q_k 가 48 이다!
+            #     predicted_next_q, predicted_next_P = imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, residual_term)  # 필터 단계
+            #
+            #     imm.draw_PDF()
 
             # IMM 적용 구간
             # # 초기 분산 (각 모델의 초기 불확실성)

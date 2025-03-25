@@ -122,8 +122,7 @@ class IMM:
         # plt.show()
 
 
-    def draw_residual(self, pos_residual_ave,
-                      name):  # ---------------------------- 객체 위치 변화 그래프 ----------------------------
+    def draw_residual(self, pos_residual_ave, name):  # ---------------------------- 객체 위치 변화 그래프 ----------------------------
         time_axis = np.arange(1, self.time_steps + 1)  # x축 (시간)
         plt.figure(figsize=(10, 5))
         plt.title('Position Residual Over Time')
@@ -156,6 +155,7 @@ class IMM:
             row_sums = matrix.sum(axis=1, keepdims=True)
             row_sums[row_sums == 0] = 1  # 0으로 나누는 오류 방지
             return matrix / row_sums
+
     def TPM_get_rho_sigma(self, i, j):
         diff = abs(i - j)
         if diff == 1:
@@ -171,8 +171,7 @@ class IMM:
         return rho, sigma
 
 
-    def generate_TPM_PDF(self,
-                         dot_q_k):  # input : 실제 관측한 속도값 dot{q}_k ::[-1.9, 1.9] / output : Transition Probability Matrix
+    def generate_TPM_PDF(self, dot_q_k):  # input : 실제 관측한 속도값 dot{q}_k ::[-1.9, 1.9] / output : Transition Probability Matrix
         p_0_updated = np.zeros((3, 3))  # 3x3 영행렬
 
         for i in range(3):
@@ -198,8 +197,7 @@ class IMM:
         print("Transition Probability Matrix:\n {}".format(TPM))  # 시험 출력
         return TPM
 
-    def generate_TPM_CRAA(self,
-                          dot_q_k):  # input : 실제 관측한 속도값 dot{q}_k ::[-1.9, 1.9] / output : Transition Probability Matrix
+    def generate_TPM_CRAA(self, dot_q_k):  # input : 실제 관측한 속도값 dot{q}_k ::[-1.9, 1.9] / output : Transition Probability Matrix
         p_0_updated = np.zeros((3, 3))  # 3x3 영행렬
 
         for i in range(3):
@@ -229,8 +227,7 @@ class IMM:
         print("Transition Probability Matrix:\n {}".format(TPM))  # 시험 출력
         return TPM
 
-    def generate_TPM_CDF(self,
-                         dot_q_k):  # input : 실제 관측한 속도값 dot{q}_k ::[-1.9, 1.9] / output : Transition Probability Matrix
+    def generate_TPM_CDF(self, dot_q_k):  # input : 실제 관측한 속도값 dot{q}_k ::[-1.9, 1.9] / output : Transition Probability Matrix
         p_0_updated = np.zeros((3, 3))  # 3x3 영행렬
 
         for i in range(3):

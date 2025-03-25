@@ -349,7 +349,7 @@ if __name__ == "__main__":
         imm = IMM(initial_probs, init_state_estimates, initial_variances)
         velocity_values = np.zeros(time_steps)
         velocity_values[30:50] = np.linspace(0, 0.3, 20, endpoint=True)
-        velocity_values[50:70]  = np.linspace(0.3, 0, 20, endpoint=True)
+        velocity_values[50:70] = np.linspace(0.3, 0, 20, endpoint=True)
 
 
 
