@@ -10,17 +10,22 @@ import IMM
 
 # 초기 설정
 def init_settings():
-    global WIDTH, HEIGHT, SPACE_SIZE, SCALE, WHITE, RED, GREEN, BLUE, BLACK
+    global WIDTH, HEIGHT, SPACE_SIZE, SCALE, center_x_pix, center_y_pix
     WIDTH, HEIGHT = 800, 800
-    SPACE_SIZE = 100
+    SPACE_SIZE = 24
     SCALE = WIDTH // SPACE_SIZE
+    center_x_pix, center_y_pix = WIDTH // 2, HEIGHT // 2
 
     # 색상 정의
+    global WHITE, RED, ORANGE, YELLOW, GREEN, BLUE, BLACK, PURPLE
     WHITE = (255, 255, 255)
     RED = (255, 0, 0)
+    ORANGE = (255, 165, 0)
+    YELLOW = (255, 255, 0)
     GREEN = (0, 255, 0)
     BLUE = (0, 0, 255)
     BLACK = (0, 0, 0)
+    PURPLE = (128, 0, 128)
 
 # Pygame 초기화 및 화면 설정
 def init_pygame():
@@ -34,12 +39,29 @@ def init_pygame():
 class DynamicObject:
     def __init__(self, id):
         self.id = id  # 객체 ID 추가
-        self.x = np.random.uniform(0, SPACE_SIZE)
-        self.y = np.random.uniform(0, SPACE_SIZE)
-        self.speed = np.random.uniform(0, 5)
+
+        # 극좌표계를 이용하여 초기 실제 위치 (미터 단위)를 생성
+        # r는 2m ~ 10m 사이, theta는 0 ~ 2π 사이에서 랜덤 선택
+        self.r = np.random.uniform(2, 10)
+        self.theta = np.random.uniform(0, 2 * np.pi)
+        # 실제 좌표: (x, y) = (r cosθ, r sinθ)
+
+        self.x = self.r * np.cos(self.theta)
+        self.y = self.r * np.sin(self.theta)
+        self.speed = np.random.uniform(0, 1)
         self.direction = np.random.uniform(0, 2 * np.pi)
         self.ax = np.random.uniform(-0.5, 0.5)
         self.ay = np.random.uniform(-0.5, 0.5)
+
+        # Return 변수
+        self.offset = math.sqrt(self.x ** 2 + self.y ** 2)  ### q_k
+        # 속도 벡터 (x, y 성분)
+        vx = self.speed * np.cos(self.direction)
+        vy = self.speed * np.sin(self.direction)
+        # 중심방향 벡터의 단위벡터 (n_x, n_y)
+        n_x = self.x / self.offset  # 현재 위치를 중심으로 정규화
+        n_y = self.y / self.offset
+        self.actual_center_vel = vx * n_x + vy * n_y    ### dot_q_k
 
     def update(self, dt):
         # 가속도 업데이트
@@ -57,29 +79,56 @@ class DynamicObject:
 
         # 속력 계산: 제한 범위 설정
         self.speed = np.sqrt(self.speed_x**2 + self.speed_y**2)
-        self.speed = np.clip(self.speed, 0, 5)
+        self.speed = np.clip(self.speed, 0, 1)
 
         # 위치 업데이트
         self.x += self.speed * np.cos(self.direction) * dt
         self.y += self.speed * np.sin(self.direction) * dt
 
-        # 경계 처리
-        if self.x < 0 or self.x > SPACE_SIZE:
-            self.direction = np.pi - self.direction
-        if self.y < 0 or self.y > SPACE_SIZE:
-            self.direction = -self.direction
+        # 6. 경계 검사: 객체의 현재 거리 계산 (중심에서의 거리)
+        current_r = math.sqrt(self.x ** 2 + self.y ** 2)
 
-        self.x = np.clip(self.x, 0, SPACE_SIZE)
-        self.y = np.clip(self.y, 0, SPACE_SIZE)
+        if current_r < 2 or current_r > 10:
+            # 현재 속도 벡터 계산
+            vx = self.speed * np.cos(self.direction)
+            vy = self.speed * np.sin(self.direction)
+            # 중심에서 객체까지의 위치 벡터의 단위 벡터 계산 (n)
+            n_x = self.x / current_r
+            n_y = self.y / current_r
+            # 속도 벡터 반사: v' = v - 2*(v·n)*n
+            dot = vx * n_x + vy * n_y  # v와 n의 내적
+            new_vx = vx - 2 * dot * n_x
+            new_vy = vy - 2 * dot * n_y
+            # 반사된 속도 벡터를 이용해 새로운 방향을 설정
+            self.direction = math.atan2(new_vy, new_vx)
+            # 필요에 따라, 위치가 경계를 벗어난 경우 경계에 맞게 재설정:
+            if current_r < 2:
+                # 내측 경계: 실제 위치를 2m에 고정
+                self.x = 2 * n_x
+                self.y = 2 * n_y
+            elif current_r > 10:
+                # 외측 경계: 실제 위치를 10m에 고정
+                self.x = 10 * n_x
+                self.y = 10 * n_y
+
+        self.offset = math.sqrt(self.x ** 2 + self.y ** 2)  ### q_k
+        # 속도 벡터 (x, y 성분)
+        vx = self.speed * np.cos(self.direction)
+        vy = self.speed * np.sin(self.direction)
+        # 중심방향 벡터의 단위벡터 (n_x, n_y)
+        n_x = self.x / self.offset  # 현재 위치를 중심으로 정규화
+        n_y = self.y / self.offset
+        self.actual_center_vel = vx * n_x + vy * n_y    ### dot_q_k
+
 
     def draw(self, screen):
         # 객체 원 그리기
-        pygame.draw.circle(screen, RED, (int(self.x * SCALE), int(self.y * SCALE)), 5)
+        pygame.draw.circle(screen, BLACK, (int(center_x_pix + self.x * SCALE), int(center_y_pix - self.y * SCALE)), 5)
 
         # 객체 번호 표시
         font = pygame.font.Font(None, 24)
         text = font.render(str(self.id), True, (0, 0, 0))
-        screen.blit(text, (int(self.x * SCALE) + 10, int(self.y * SCALE) - 10))
+        screen.blit(text, (int(center_x_pix + self.x * SCALE) + 10, int(center_y_pix - self.y * SCALE) - 10))
 
     # def calculate_offset(self):
     #     center_x, center_y = SPACE_SIZE // 2, SPACE_SIZE // 2
@@ -96,97 +145,106 @@ class DynamicObject:
 
 # 동심원 그리기 함수
 def draw_circles(screen):
-    pygame.draw.circle(screen, BLUE, (WIDTH // 2, HEIGHT // 2), 50 * SCALE, 1)   # RoI 3
-    pygame.draw.circle(screen, BLACK, (WIDTH // 2, HEIGHT // 2), 40 * SCALE, 1)  # RoI 3 중심선
-    pygame.draw.circle(screen, GREEN, (WIDTH // 2, HEIGHT // 2), 30 * SCALE, 1)  # RoI 2
-    pygame.draw.circle(screen, BLACK, (WIDTH // 2, HEIGHT // 2), 20 * SCALE, 1)  # RoI 2 중심선
-    pygame.draw.circle(screen, RED, (WIDTH // 2, HEIGHT // 2), 10 * SCALE, 1)    # RoI 1
-    pygame.draw.circle(screen, BLACK, (WIDTH // 2, HEIGHT // 2), 5 * SCALE, 1)   # RoI 1 중심선
+    pygame.draw.circle(screen, YELLOW, (center_x_pix, center_y_pix), int(12 * SCALE))
+    pygame.draw.circle(screen, ORANGE, (center_x_pix, center_y_pix), int(8 * SCALE))
+    pygame.draw.circle(screen, RED, (center_x_pix, center_y_pix), int(4 * SCALE))
+    # 외곽선 그리기 (검은색 선)
+    pygame.draw.circle(screen, BLACK, (center_x_pix, center_y_pix), int(12 * SCALE), 3)
+    pygame.draw.circle(screen, BLACK, (center_x_pix, center_y_pix), int(10 * SCALE), 1)
+    pygame.draw.circle(screen, BLACK, (center_x_pix, center_y_pix), int(8 * SCALE), 3)
+    pygame.draw.circle(screen, BLACK, (center_x_pix, center_y_pix), int(6 * SCALE), 1)
+    pygame.draw.circle(screen, BLACK, (center_x_pix, center_y_pix), int(4 * SCALE), 3)
+    pygame.draw.circle(screen, BLACK, (center_x_pix, center_y_pix), int(2 * SCALE), 1)
+    pygame.draw.circle(screen, BLACK, (center_x_pix, center_y_pix), int(0.1 * SCALE), 3)
 
 
 # 오프셋 계산 및 표시 함수
 def draw_offset(screen, obj):
-    center_x, center_y = WIDTH // 2, HEIGHT // 2
-    offset = math.sqrt((obj.x * SCALE - center_x) ** 2 + (obj.y * SCALE - center_y) ** 2)
+    # center_x, center_y = WIDTH // 2, HEIGHT // 2
+    # offset = math.sqrt((obj.x * SCALE - center_x) ** 2 + (obj.y * SCALE - center_y) ** 2)
+    #
     font = pygame.font.Font(None, 24)
-    text = font.render(f"Offset: {offset / SCALE:.2f}", True, (0, 0, 0))
-    screen.blit(text, (obj.x * SCALE, obj.y * SCALE - 20))
+    text = font.render(f"Offset: {obj.offset:.2f}", True, BLACK)
+    screen.blit(text, (int(center_x_pix + obj.x * SCALE), int(center_y_pix - obj.y * SCALE) - 20))
     # return offset / SCALE
 
 
-def cal_offset(obj):
-    center_x, center_y = WIDTH // 2, HEIGHT // 2
-    offset = math.sqrt((obj.x * SCALE - center_x) ** 2 + (obj.y * SCALE - center_y) ** 2)
-    RoI_centerline_offset = (round(abs((offset / SCALE) - 5), 2), round(abs((offset / SCALE) - 20), 2), round(abs((offset / SCALE) - 40), 2))  # RoI별 거리
-    return RoI_centerline_offset
+# def cal_offset(obj):
+#     center_x, center_y = WIDTH // 2, HEIGHT // 2
+#     offset = math.sqrt((obj.x * SCALE - center_x) ** 2 + (obj.y * SCALE - center_y) ** 2)
+#     RoI_centerline_offset = (round(abs((offset / SCALE) - 5), 2), round(abs((offset / SCALE) - 20), 2), round(abs((offset / SCALE) - 40), 2))  # RoI별 거리
+#     return RoI_centerline_offset
 
 
-def draw_velocity_arrows(screen, obj, center_x, center_y):
-    start_pos = (int(obj.x * SCALE), int(obj.y * SCALE))  # 객체 위치
+def draw_velocity_arrows(screen, obj):
+    # 인라인으로 실제 좌표를 픽셀 좌표로 변환합니다.
+    start_pos = (int(center_x_pix + obj.x * SCALE), int(center_y_pix - obj.y * SCALE))
 
-    # 화살표를 그리는 내부 함수
-    def draw_arrow(color, start, vector, scale=30):
-        magnitude = math.sqrt(vector[0] ** 2 + vector[1] ** 2)  # 속도 크기
+    # 내부 함수: 주어진 벡터를 화살표로 그립니다.
+    def draw_arrow(color, start, vector, scale=80  ):
+        magnitude = math.sqrt(vector[0] ** 2 + vector[1] ** 2)  # 벡터의 크기
         if magnitude == 0:
-            return  # 속도가 0이면 화살표 없음
-        unit_vector = (vector[0] / magnitude, vector[1] / magnitude)  # 방향 벡터 계산
+            return  # 속도가 0이면 화살표를 그리지 않음
+        unit_vector = (vector[0] / magnitude, vector[1] / magnitude)  # 단위 벡터 계산
         end_pos = (start[0] + int(unit_vector[0] * magnitude * scale),
                    start[1] + int(unit_vector[1] * magnitude * scale))
-        pygame.draw.line(screen, color, start, end_pos, 2)  # 화살표 몸체
 
-        # 화살표 촉 계산
-        arrow_size = 10  # 촉 크기
+        pygame.draw.line(screen, color, start, end_pos, 2)  # 화살표 몸체 그리기
+
+        # 화살표 촉(헤드) 계산
+        arrow_size = 10
         arrow_point1 = (end_pos[0] - int(unit_vector[0] * arrow_size - unit_vector[1] * arrow_size // 2),
                         end_pos[1] - int(unit_vector[1] * arrow_size + unit_vector[0] * arrow_size // 2))
         arrow_point2 = (end_pos[0] - int(unit_vector[0] * arrow_size + unit_vector[1] * arrow_size // 2),
                         end_pos[1] - int(unit_vector[1] * arrow_size - unit_vector[0] * arrow_size // 2))
         pygame.draw.polygon(screen, color, [end_pos, arrow_point1, arrow_point2])
 
-    # x축 속도 화살표 (녹색)
+    # 녹색: x축 속도 성분
     draw_arrow(GREEN, start_pos, (obj.vx, 0))
 
-    # y축 속도 화살표 (파란색)
-    draw_arrow(BLUE, start_pos, (0, obj.vy))
+    # 파란색: y축 속도 성분 (픽셀 좌표계에서 y는 반전됨)
+    draw_arrow(BLUE, start_pos, (0, -obj.vy))
 
-    # # 중심점 방향 속력 화살표 (검은색)
-    # draw_arrow(BLACK, start_pos, (obj.vx, obj.vy))
+    # 검은색: 전체 속도 벡터 (실제 속도 벡터 변환; y축 부호 반전)
+    draw_arrow(BLACK, start_pos, (obj.vx, -obj.vy))
 
-    # 중심점 방향 속도 화살표 (빨간색)
-    # 중심점과 객체 간 방향 벡터 계산
-    vcx = center_x / SCALE - obj.x  # 중심점으로의 x축 방향
-    vcy = center_y / SCALE - obj.y  # 중심점으로의 y축 방향
-    center_magnitude = math.sqrt(vcx ** 2 + vcy ** 2)  # 중심점 방향 벡터 크기
-    if center_magnitude > 0:
-        vcx /= center_magnitude  # 단위 벡터화
-        vcy /= center_magnitude
-
-    # 중심점 방향 속도의 크기를 기반으로 화살표 길이를 조정
-    center_speed = obj.vx * vcx + obj.vy * vcy  # 중심점 방향 속도 크기 (스칼라 곱)
-    draw_arrow(RED, start_pos, (vcx * center_speed, vcy * center_speed))
-
-
-def calculate_center_velocity(obj, center_x, center_y):
-    # 중심점 벡터
-    vcx = center_x / SCALE - obj.x
-    vcy = center_y / SCALE - obj.y
-    center_vector = np.array([vcx, vcy])
-
-    # 객체 속도 벡터
-    velocity_vector = np.array([obj.vx, obj.vy])
-
-    # 중심점 방향 속도 계산
-    center_vector_magnitude = np.linalg.norm(center_vector)
-    if center_vector_magnitude == 0:  # 중심점과 겹치면 속도 0
-        return 0
-
-    center_velocity = np.dot(velocity_vector, center_vector) / center_vector_magnitude
-    return round(center_velocity, 2)
+    # 빨간색: 중심 방향 속도 벡터
+    # 중심(0,0)으로 향하는 단위 벡터 계산: 객체의 실제 좌표가 (actual_x, actual_y)
+    r = math.sqrt(obj.x ** 2 + obj.y ** 2)
+    if r > 0:
+        unit_center = (-obj.x / r, -obj.y / r)
+    else:
+        unit_center = (0, 0)
+    # 실제 중심 방향 속력 성분: 내적 (만약 음수이면 0으로 처리)
+    proj = obj.vx * unit_center[0] + obj.vy * unit_center[1]
+    proj = max(proj, 0)
+    # 픽셀 단위로 변환 (y축 부호 반전)
+    center_vector = (unit_center[0] * proj, -unit_center[1] * proj)
+    draw_arrow(PURPLE, start_pos, center_vector)
 
 
-def cal_velocity(obj):
-    vel = obj.speed
-    dir = obj.direction
-    return round(vel, 2), dir
+# def calculate_center_velocity(obj, center_x, center_y):
+#     # 중심점 벡터
+#     vcx = center_x / SCALE - obj.x
+#     vcy = center_y / SCALE - obj.y
+#     center_vector = np.array([vcx, vcy])
+#
+#     # 객체 속도 벡터
+#     velocity_vector = np.array([obj.vx, obj.vy])
+#
+#     # 중심점 방향 속도 계산
+#     center_vector_magnitude = np.linalg.norm(center_vector)
+#     if center_vector_magnitude == 0:  # 중심점과 겹치면 속도 0
+#         return 0
+#
+#     center_velocity = np.dot(velocity_vector, center_vector) / center_vector_magnitude
+#     return round(center_velocity, 2)
+
+
+# def cal_velocity(obj):
+#     vel = obj.speed
+#     dir = obj.direction
+#     return round(vel, 2), dir
 
 
 # # 일단 굳이 필요 없음
@@ -508,69 +566,110 @@ def main():
 
         # 중심점 설정
         center_x, center_y = WIDTH // 2, HEIGHT // 2
+        # 스텝 횟수 변수
+        step_count = 0
+        max_steps = 10  # 최대 10번 이동 후 종료
 
-        # 객체 업데이트 및 그리기
-        for obj in objects:
-            obj.update(0.1)
-            obj.draw(screen)
-            draw_offset(screen, obj)   # obj 1, 2, 3에 대한 offset 표현
-            draw_velocity_arrows(screen, obj, center_x, center_y)   # obj 1, 2, 3에 대한 속도 화살표 표현
+        running = True
+        while running:
+            screen.fill(WHITE)  # 배경 지우기
+            draw_circles(screen)  # 동심원 그리기
 
-        # offset 관측
-        current_time = time.time()
-        if timestep == 0 or current_time - last_log_time >= 1.0:
-            offsets = [0, 0, 0]
-            Velocities = [0, 0, 0]
-            Directions = [0, 0, 0]
-            Center_Vel = [0, 0, 0]
             for obj in objects:
-                offset = cal_offset(obj)
-                velocity, dir = cal_velocity(obj)
-                center_velocity = calculate_center_velocity(obj, center_x, center_y)
-                offsets[obj.id - 1] = offset
-                Velocities[obj.id - 1] = velocity
-                Directions[obj.id - 1] = dir
-                Center_Vel[obj.id - 1] = center_velocity
-                timestep += 1
-            print('Offsets/ obj 1:{}, obj 2:{}, obj 3:{}'.format(offsets[0], offsets[1], offsets[2]))  # 1초마다 객체의 offset 관측 - IMM 재료
-            # print('Velocities/ obj 1, obj 2, obj 3 :{}'.format(Velocities))
-            # print('Directions/ obj 1, obj 2, obj 3 :{}'.format(Directions))
-            print('Center_Vel/ obj 1, obj 2, obj 3 :{}'.format(Center_Vel))     # 1초마다 객체의 (중심점으로의)속도 관측 - IMM 재료
-            print()
-            last_log_time = current_time
+                obj.update(0.1)
+                print(f"Object ID: {obj.id}, lateral offset: ({obj.offset:.2f}) Actual Pos: ({obj.x:.2f}, {obj.y:.2f}), Speed: {obj.speed:.2f}, Center vel: {obj.actual_center_vel}")
+                obj.draw(screen)
+                draw_offset(screen, obj)   # obj 1, 2, 3에 대한 offset 표현
+                draw_velocity_arrows(screen, obj)   # obj 1, 2, 3에 대한 속도 화살표 표현
 
-            initial_probs = [1/3, 1/3, 1/3]
-            initial_variances = [1, 3, 5]
+
+            # for event in pygame.event.get():
+            #     if event.type == pygame.QUIT:  # 창 닫기 이벤트
+            #         running = False
+            #     elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+            #         if step_count < max_steps:
+            #             # 스페이스바를 누르면 한 스텝 이동
+            #             for obj in objects:
+            #                 print(
+            #                     f"Object ID: {obj.id}, lateral offset: ({obj.offset:.2f}) Actual Pos: ({obj.x:.2f}, {obj.y:.2f}), Speed: {obj.speed:.2f}, Center vel: {obj.actual_center_vel}")
+            #
+            #                 obj.update(0.1)  # dt = 0.1초
+            #             step_count += 1
+            #         else:
+            #             running = False  # 10번 이동 후 종료
+            #
+            # # 객체 그리기
             # for obj in objects:
-            #     imm = IMM.IMM(initial_probs, offsets[obj.id - 1], initial_variances)
-            #
-            #     print("중심 방향 객체 속도 : {}".format(Center_Vel[obj.id - 1]))
-            #
-            #     TPM = imm.generate_TPM(Center_Vel[obj.id - 1])     # 객체 속도 넣으면 TPM 생성
-            #     mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)  # 예측 단계
-            #
-            #     print("객체 위치 : {}".format(offsets[obj.id - 1]))
-            #
-            #     residual_term = imm.cal_residual_offset(offsets[obj.id - 1], mixed_bar_q)  # 실제 관측한 객체 위치 q_k 가 48 이다!
-            #     predicted_next_q, predicted_next_P = imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, residual_term)  # 필터 단계
-            #
-            #     imm.draw_PDF()
+            #     obj.draw(screen)
+            #     draw_velocity_arrows(screen, obj)
+            #     draw_offset(screen, obj)
 
-            # IMM 적용 구간
-            # # 초기 분산 (각 모델의 초기 불확실성)
-            # initial_variances = [1, 4, 9]
-            # # 초기 확률 (모델 초기 가중치)
-            # initial_probs = [round(1/3, 2), round(1/3, 2), round(1/3, 2)]
-            #
-            # for obj in objects:
-            #     imm = IMM(offsets[obj.id - 1], initial_variances, initial_probs)
-            #     imm.draw_PDF()
+            pygame.display.flip()  # 화면 업데이트
+            clock.tick(60)  # 초당 30프레임 유지
 
-
-        pygame.display.flip()
-        clock.tick(60)
-
-    pygame.quit()
+        pygame.quit()
+    #     # 객체 업데이트 및 그리기
+    #     for obj in objects:
+    #         obj.update(0.1)
+    #         obj.draw(screen)
+    #         draw_offset(screen, obj)   # obj 1, 2, 3에 대한 offset 표현
+    #         draw_velocity_arrows(screen, obj, center_x, center_y)   # obj 1, 2, 3에 대한 속도 화살표 표현
+    #
+    #     # offset 관측
+    #     current_time = time.time()
+    #     if timestep == 0 or current_time - last_log_time >= 1.0:
+    #         offsets = [0, 0, 0]
+    #         Velocities = [0, 0, 0]
+    #         Directions = [0, 0, 0]
+    #         Center_Vel = [0, 0, 0]
+    #         for obj in objects:
+    #             offset = cal_offset(obj)
+    #             velocity, dir = cal_velocity(obj)
+    #             center_velocity = calculate_center_velocity(obj, center_x, center_y)
+    #             offsets[obj.id - 1] = offset
+    #             Velocities[obj.id - 1] = velocity
+    #             Directions[obj.id - 1] = dir
+    #             Center_Vel[obj.id - 1] = center_velocity
+    #             timestep += 1
+    #         print('Offsets/ obj 1:{}, obj 2:{}, obj 3:{}'.format(offsets[0], offsets[1], offsets[2]))  # 1초마다 객체의 offset 관측 - IMM 재료
+    #         # print('Velocities/ obj 1, obj 2, obj 3 :{}'.format(Velocities))
+    #         # print('Directions/ obj 1, obj 2, obj 3 :{}'.format(Directions))
+    #         print('Center_Vel/ obj 1, obj 2, obj 3 :{}'.format(Center_Vel))     # 1초마다 객체의 (중심점으로의)속도 관측 - IMM 재료
+    #         print()
+    #         last_log_time = current_time
+    #
+    #         initial_probs = [1/3, 1/3, 1/3]
+    #         initial_variances = [1, 3, 5]
+    #         # for obj in objects:
+    #         #     imm = IMM.IMM(initial_probs, offsets[obj.id - 1], initial_variances)
+    #         #
+    #         #     print("중심 방향 객체 속도 : {}".format(Center_Vel[obj.id - 1]))
+    #         #
+    #         #     TPM = imm.generate_TPM(Center_Vel[obj.id - 1])     # 객체 속도 넣으면 TPM 생성
+    #         #     mixed_mu, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM)  # 예측 단계
+    #         #
+    #         #     print("객체 위치 : {}".format(offsets[obj.id - 1]))
+    #         #
+    #         #     residual_term = imm.cal_residual_offset(offsets[obj.id - 1], mixed_bar_q)  # 실제 관측한 객체 위치 q_k 가 48 이다!
+    #         #     predicted_next_q, predicted_next_P = imm.filter_prediction(mixed_mu, mixed_bar_q, mixed_P, residual_term)  # 필터 단계
+    #         #
+    #         #     imm.draw_PDF()
+    #
+    #         # IMM 적용 구간
+    #         # # 초기 분산 (각 모델의 초기 불확실성)
+    #         # initial_variances = [1, 4, 9]
+    #         # # 초기 확률 (모델 초기 가중치)
+    #         # initial_probs = [round(1/3, 2), round(1/3, 2), round(1/3, 2)]
+    #         #
+    #         # for obj in objects:
+    #         #     imm = IMM(offsets[obj.id - 1], initial_variances, initial_probs)
+    #         #     imm.draw_PDF()
+    #
+    #
+    #     pygame.display.flip()
+    #     clock.tick(60)
+    #
+    # pygame.quit()
 
 
 # 실행

@@ -24,87 +24,68 @@ from scipy.stats import norm
 # input: 객체 개수, 시뮬레이션 step 설정
 # output: 모든 동적 객체들의 위치 및 속도.
 
-def environment_init(num_objects):
+
+def main():
+    # 초기 환경 설정 및 Pygame 초기화
     env.init_settings()
     screen, clock = env.init_pygame()
 
-    objects = [env.DynamicObject(id=i) for i in range(num_objects)]
-
-
-
-if __name__=="__main__":
-    # num_objects = 3
-    #
-    # environment_init(num_objects)
-    #
-    # imm_init()
-    # #imm_init(single or multi = 0 or 1)
-    #
-    #     for
-    #         q_k, dot_q_k = iter_env()
-    #         # [객체 수, q_k, dot_q_k, time_step]
-    #
-    #         next_hat_q, next_hat_dot_q, next_hat_P = iter_imm(q_k, dot_q_k)
-    #
-    #         W = raf(q_k, dot_q_k)
-    #         W_prime = raf(next_hat_q, next_hat_dot_q)
-
-    ### Env initialize
-    env.init_settings()
-    screen, clock = env.init_pygame()
-
-    # 객체 생성: 실제 공간 좌표를 기반으로 초기화된 동적 객체들 (ID는 0 부터 할당)
     num_objects = 3
+    max_steps = 10  # 총 10 real time step 진행
+    real_dt = 1.0  # real time step: 1초 (실제 시간)
+
+    # 객체 생성 (ID: 0, 1, 2)
     objects = [env.DynamicObject(id=i) for i in range(num_objects)]
 
-    # 시뮬레이션 step 설정
-    time_steps = 100
+    # 결과 저장: NumPy 배열 (행: 객체, 열: real time step)
+    offsets = np.zeros((num_objects, max_steps))
+    center_vels = np.zeros((num_objects, max_steps))
 
-    # 위협 평가값 저장 리스트
-    threat_values = np.zeros((num_objects, time_steps))
-
-    ### IMM initialize
-    num_ROI = 3 #구역 수
-    pos_values = np.zeros((num_objects, time_steps))
-    predicted_loc_values = np.zeros((num_objects, time_steps+1))
-    predicted_cov_values = np.zeros((num_objects, time_steps+1))
-    for i in range(num_objects):
-        predicted_cov_values[i][0] = 0
-    # 모델 확률 초기화
-    model_probs = np.zeros((num_objects, num_ROI))
-    for i in range(num_objects):
-        for j in range(num_ROI):
-            model_probs[i][j] = 1/3
-    # 객체 별 Offset 초기화
-    position = np.zeros((num_objects))
-    # 객체 별 Offset 속도 초기화
-    velocity_values = np.zeros((num_objects))
-
-
-    ### Env 실행 및 IMM 실행
-    for steps in range(time_steps):
-        screen.fill(env.WHITE)
-        # 동심원(구역) 그리기: 실제 공간을 기준으로 색칠된 구역을 화면에 표시
-        env.draw_circles(screen)
-
-        # 각 객체에 대해: 화면에 그리기, offset 및 속도 화살표 표현, 그리고 실제 좌표 업데이트
-        for obj in objects:
-            # 디버그 출력 (콘솔에 실제 좌표와 속도 출력)
-            print(f"Object ID: {obj.id}, lateral offset: ({obj.offset:.2f}) Actual Pos: ({obj.actual_x:.2f}, {obj.actual_y:.2f}), Speed: {obj.speed:.2f}")
-            obj.draw(screen)
-            env.draw_offset(screen, obj)
-            env.draw_velocity_arrows(screen, obj)
-
-            position[obj.id] = obj.offset
-            pos_values[obj.id][steps] = position[obj.id]
-            velocity_values[obj.id] = obj.radial_speed
-
-            obj.update(0.1)
-
-
-
-
-
-        pygame.display.flip()
-
+    step = 0
+    running = True
+    print("Press SPACE to advance one real time step ({} sec each).".format(real_dt))
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            # 스페이스바 누르면 한 real time step 진행
+            elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
+                if step < max_steps:
+                    off, cent_vel = env.simulate_onestep(objects, real_dt, screen)
+                    for obj in objects:
+                        offsets[obj.id, step] = off[obj.id]
+                        center_vels[obj.id, step] = cent_vel[obj.id]
+                    print(f"Real time step {step}:")
+                    for i in range(num_objects):
+                        print(f"  Object {i}: Offset = {off[i]:.2f} m, Center Vel = {cent_vel[i]:.2f} m/s")
+                    step += 1
+                else:
+                    running = False
+        clock.tick(60)
     pygame.quit()
+    print("\nFinal Results:")
+    print("Offsets (m):")
+    print(offsets)
+    print("Center Velocities (m/s):")
+    print(center_vels)
+
+
+if __name__ == "__main__":
+    main()
+# if __name__=="__main__":
+#     # num_objects = 3
+#     #
+#     # environment_init(num_objects)
+#     #
+#     # imm_init()
+#     # #imm_init(single or multi = 0 or 1)
+#     #
+#     #     for
+#     #         q_k, dot_q_k = iter_env()
+#     #         # [객체 수, q_k, dot_q_k, time_step]
+#     #
+#     #         next_hat_q, next_hat_dot_q, next_hat_P = iter_imm(q_k, dot_q_k)
+#     #
+#     #         W = raf(q_k, dot_q_k)
+#     #         W_prime = raf(next_hat_q, next_hat_dot_q)
+#
