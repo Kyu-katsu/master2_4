@@ -3,7 +3,9 @@ import matplotlib.pyplot as plt
 
 def cal_threat(q, dot_q):
     l = 12
-    T_q = l / (q - 2)
+    eps = 1e-6  # 아주 작은 상수
+    # q - 2가 0에 가까울 때 eps를 더해 0으로 나누는 오류 방지
+    T_q = l / ((q - 2) if abs(q - 2) > eps else np.sign(q - 2) * eps)
     T_dot_q = 1 + np.tanh(dot_q)
     W = np.exp(T_q * T_dot_q)
     return W
