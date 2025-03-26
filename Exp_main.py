@@ -31,7 +31,7 @@ def main():
     screen, clock = env.init_pygame()
 
     num_objects = 3
-    max_steps = 10  # 총 10 real time step 진행
+    max_steps = 100  # real time step 진행
     real_dt = 0.1  # real time step
 
     # 객체 생성 (ID: 0, 1, 2)
