@@ -9,8 +9,9 @@ from scipy.stats import norm
 
 
 class IMM:
-    def __init__(self, init_model_prob, init_state_estimates, init_distribution_var):
+    def __init__(self, init_model_prob, init_state_estimates, init_distribution_var, time_steps, n_steps=1):
         self.model_num = 3  # 모델 개수 M
+        self.n_steps = n_steps  # 예측할 time step 수
         self.offset_list = []
         self.RoI_middle_line = [2, 6, 10]
         self.mu = init_model_prob  # 모델 확률 \mu
@@ -22,8 +23,8 @@ class IMM:
                              [0.01, 0.015, 0.2]])  # 3x3 행렬
         self.lane_width = 4
 
-        # draw
-        self.time_steps = 100  # iteration 횟수
+
+        self.time_steps = time_steps  # iteration 횟수
         self.mu_values = np.zeros((self.time_steps, self.model_num))
         # self.mu_values[0] = self.mu  # mu_values 초기값 설정
         self.pos_values = np.zeros(self.time_steps)
@@ -236,7 +237,6 @@ class IMM:
         for i in range(3):
             for j in range(3):
                 rho, sigma = self.TPM_get_rho_sigma(i, j)
-                pdf_value = norm.pdf(dot_q_k, loc=rho, scale=sigma)
                 cdf_value = norm.cdf(dot_q_k, loc=rho, scale=sigma)
 
                 # Use CDF
@@ -261,7 +261,7 @@ class IMM:
         return TPM
 
 
-    def mixed_prediction(self, TPM, step):  # 혼합 단계, Interaction(Mixing) Step in CRAA paper.
+    def mixed_prediction(self, TPM):  # 혼합 단계, Interaction(Mixing) Step in CRAA paper.
         # model_prob 은 np.array(3)
         # state_estimates 는 np.array(3)
         # distribution_var 는 np.array(3)
@@ -289,7 +289,6 @@ class IMM:
         for j in range(3):  # 혼합 오차 공분산, \mathbb{P}_{k|k-1}^j
             sum_value = 0
             for i in range(3):
-                #diff = self.pos_values[step] - mixed_bar_q[i]
                 diff = self.bar_q[i] - mixed_bar_q[i]
                 sum_value += mixed_ratio[i][j] * (self.P[j] + diff * diff)  # 가중합 계산
             mixed_P[j] = sum_value
@@ -341,7 +340,7 @@ def simulate_steps(obj, time_step, curr_offsets, curr_velocities, IMM_to_main):
     print("{}번 객체에 대한 {}번째 IMM 진행".format(obj.id, time_step))
 
     TPM = IMM_to_main.generate_TPM_CDF(curr_velocities[obj.id, time_step])
-    mixed_mu, mixed_ratio, mixed_bar_q, mixed_P = IMM_to_main.mixed_prediction(TPM, time_step)
+    mixed_mu, mixed_ratio, mixed_bar_q, mixed_P = IMM_to_main.mixed_prediction(TPM)
 
     print("객체 위치 : {}".format(curr_offsets[obj.id, time_step]))
     if curr_offsets[obj.id, time_step] <= 4:
@@ -372,95 +371,38 @@ def simulate_steps(obj, time_step, curr_offsets, curr_velocities, IMM_to_main):
 
     return pred_offsets, pred_center_vels
 
-
-# if __name__ == "__main__":
-#     time_steps = 100
-#     # iter
-#     iteration = 1
-#     model_num = 2
-#     #####################            CDF           ####################################################
-#     pos_residual_sum = np.zeros(time_steps)
-#
-#     predicted_cov = np.zeros(time_steps)
-#
-#     for iter in range(iteration):
-#
-#         # 초기 확률 (모델 초기 가중치)
-#         initial_probs = [1 / 3, 1 / 3, 1 / 3]
-#         # 초기 오프셋 (상태 추정치)
-#         init_state_estimates = position = 10
-#         # 초기 분산 (각 모델의 초기 불확실성)
-#         initial_variances = [1, 1, 1]
-#         imm = IMM(initial_probs, init_state_estimates, initial_variances)       # 이거는 Exp_main에서 해야할 것 같다.
-#         velocity_values = np.zeros(time_steps)
-#         velocity_values[30:50] = np.linspace(0, 0.3, 20, endpoint=True)
-#         velocity_values[50:70] = np.linspace(0.3, 0, 20, endpoint=True)
-#
-#
-#         predicted_loc = position
-#         for i in range(time_steps):
-#             noise = np.random.normal(loc=0, scale=0.05)  # 속도 노이즈
-#             velocity_values[i] = velocity_values[i] + noise
-#             imm.pos_values[i] = position
-#
-#             print("=============================================================")
-#             print("{}번째 IMM 진행".format(i + 1))
-#
-#             curr_velocity = velocity_values[i]
-#             print("객체 속도 : {}".format(curr_velocity))
-#
-#             # TPM & 1)Interaction(Mixing)
-#             TPM = imm.generate_TPM_CDF(curr_velocity)     # 객체 속도 넣으면 TPM 생성
-#             mixed_mu, mixed_ratio, mixed_bar_q, mixed_P = imm.mixed_prediction(TPM, i)  # 예측 단계
-#
-#
-#             print("객체 위치 : {}".format(position))
-#             if position <= 4:
-#                 roi = 1
-#             elif 4 < position <= 8:
-#                 roi = 2
-#             else:
-#                 roi = 3
-#             print("객체 위치 : RoI {}".format(roi))
-#
-#
-#             # 2)Model Probability Update
-#             #residual_term = imm.cal_residual_offset(curr_position, mixed_bar_q)
-#             residual_term = position - mixed_bar_q
-#             print("resual_term :", residual_term)
-#             filtered_mu = imm.filter_prediction(mixed_mu, mixed_P, residual_term)  # 필터 단계, \mu만 갱신
-#             imm.mu_values[i] = filtered_mu
-#             print("Filtered mu: {}".format(filtered_mu))
-#
-#             pos_residual = predicted_loc - position
-#             # 예측 위치 계산 (예: 각 모델의 차선 중심에 가중합)
-#             #predicted_loc = filtered_mu[0] * mixed_bar_q[0] + filtered_mu[1] * mixed_bar_q[1] + filtered_mu[2] * mixed_bar_q[2]
-#             predicted_loc = filtered_mu[0] * 2 + filtered_mu[1] * 6 + filtered_mu[2] * 10
-#
-#             predicted_covariance = 0
-#             for lane in range(3):
-#                 predicted_covariance += filtered_mu[lane] * (mixed_P[lane] + ((mixed_bar_q[lane] - predicted_loc)**2))
-#
-#             print("Predict loc: {}".format(predicted_loc))
-#             print("Predict covariance: {}".format(predicted_covariance))
-#             predicted_cov[i] = predicted_covariance
-#             imm.predicted_loc_values[i] = predicted_loc  # 예측 위치 저장
-#
-#             print("RoI {}에 있을 확률 제일 높".format(np.argmax(filtered_mu)+1))
-#
-#             print("예측-실제 차이 :", pos_residual)
-#             pos_residual_sum[i] += pos_residual
-#
-#             imm.pos_residual[i] = pos_residual
-#
-#
-#             curr_position = position - (velocity_values[i])
-#             position_limits = (2, 10)
-#             curr_position = max(position_limits[0], min(position_limits[1], curr_position))
-#             position = curr_position    # 위치값 갱신
-#
-#         imm.draw_pos(iter,"CDF")
-#         imm.draw_model_prob(iter, "CDF")
-#
-#     pos_residual_ave = pos_residual_sum / iteration
-#     imm.draw_residual(pos_residual_ave, 'residual_CDF.jpg')
+def simulate_n_steps(obj, time_step, curr_offsets, curr_velocities, IMMAlg):
+    """
+    IMM 예측 함수 (n_steps 예측):
+      - obj: 대상 DynamicObject
+      - time_step: 현재 time step index (정수)
+      - curr_offsets: 전체 시뮬레이션 동안의 현재 offset 배열 (num_objects x total_steps)
+      - curr_velocities: 전체 시뮬레이션 동안의 현재 중심 방향 속도 배열 (num_objects x total_steps)
+      - IMMAlg: IMM 클래스 인스턴스 (n_steps가 예측 horizon)
+    반환:
+      - pred_offsets: shape (n_steps,), 각 예측 시점의 offset (m)
+      - pred_center_vels: shape (n_steps,), 각 예측 시점의 중심 방향 속도 (m/s)
+    """
+    n = IMMAlg.n_steps
+    pred_offsets = np.zeros(n)
+    pred_center_vels = np.zeros(n)
+    # 초기값 설정: 현재 offset과 중심 속도를 시작 상태로 사용
+    current_offset = curr_offsets[obj.id, time_step]
+    current_velocity = curr_velocities[obj.id, time_step]
+    # 예측을 n_steps 동안 반복
+    for k in range(n):
+        TPM = IMMAlg.generate_TPM_CDF(current_velocity)
+        mixed_mu, mixed_ratio, mixed_bar_q, mixed_P = IMMAlg.mixed_prediction(TPM)
+        residual = current_offset - mixed_bar_q
+        filtered_mu = IMMAlg.filter_prediction(mixed_mu, mixed_P, residual)
+        IMMAlg.mu_values[time_step + k] = filtered_mu
+        predicted_loc = filtered_mu[0] * 2 + filtered_mu[1] * 6 + filtered_mu[2] * 10
+        # 예측 분산은 계산하여 저장할 수 있으나 여기서는 예측 offset, 속도로만 처리
+        IMMAlg.predicted_loc_values[time_step + k] = predicted_loc
+        # 단순 모델: 속도는 그대로 유지한다고 가정 (또는 다른 예측 모형 적용 가능)
+        pred_offsets[k] = predicted_loc
+        pred_center_vels[k] = current_velocity
+        # 만약 다단계 예측으로 현재 상태를 업데이트하고 싶다면:
+        current_offset = predicted_loc
+        current_velocity = current_velocity
+    return pred_offsets, pred_center_vels

@@ -1,6 +1,7 @@
 import Exp_Env as env
 import Exp_IMM as imm
 import Exp_RAF as raf
+import Exp_graph as graph
 import numpy as np
 import matplotlib
 matplotlib.use('TkAgg')  # 또는 'Qt5Agg'
@@ -31,17 +32,18 @@ def main():
     screen, clock = env.init_pygame()
 
     num_objects = 3
-    max_steps = 100  # real time step 진행
-    real_dt = 0.1  # real time step
+    max_steps = 100    # 총 100 real time steps (예: 0.1초씩이면 10초)
+    real_dt = 0.1      # real time step 간격 (초)
+    n_steps_pred = 1   # IMM 예측 horizon (n time steps, 예: 1 또는 5)
 
     # 객체 생성 (ID: 0, 1, 2)
     objects = [env.DynamicObject(id=i) for i in range(num_objects)]
 
-    # 결과 저장: NumPy 배열 (행: 객체, 열: real time step)
+    # 결과 저장 배열 (NumPy 배열; 행: 객체, 열: time step)
     offsets = np.zeros((num_objects, max_steps))
     center_vels = np.zeros((num_objects, max_steps))
-    pred_offsets = np.zeros((num_objects, max_steps))
-    pred_center_vels = np.zeros((num_objects, max_steps))
+    pred_offsets = np.zeros((num_objects, max_steps, n_steps_pred))
+    pred_center_vels = np.zeros((num_objects, max_steps, n_steps_pred))
     curr_Risks = np.zeros((num_objects, max_steps))
     pred_Risks = np.zeros((num_objects, max_steps))
 
@@ -49,7 +51,7 @@ def main():
     initial_probs = [1/3, 1/3, 1/3]
     init_state_estimate = 6
     initial_variances = [1, 1, 1]
-    IMMAlg = imm.IMM(initial_probs, init_state_estimate, initial_variances)
+    IMMAlg = imm.IMM(initial_probs, init_state_estimate, initial_variances, max_steps, n_steps=n_steps_pred)
 
     step = 0
     running = True
@@ -61,7 +63,7 @@ def main():
             # 스페이스바 누르면 한 real time step 진행
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
                 if step < max_steps:
-                    ### Pygame Environment One step Run
+                    ### Pygame Environment One 'real_dt' step Run
                     off, cent_vel = env.simulate_onestep(objects, real_dt, screen)
                     for obj in objects:
                         offsets[obj.id, step] = off[obj.id]
@@ -71,61 +73,54 @@ def main():
                         print(f"  Object {i}: Offset = {off[i]:.2f} m, Center Vel = {cent_vel[i]:.2f} m/s")
 
 
-                    ### IMM Algorithm for Predicted pos, vel
+                    ### IMM Algorithm for 'n_steps' Predicted pos, vel
                     for obj in objects:
-                        pred_offset, pred_center_vel = imm.simulate_steps(obj, step, offsets, center_vels, IMMAlg)
-                        pred_offsets[obj.id, step], pred_center_vels[obj.id, step] = pred_offset, pred_center_vel
-                    for i in range(num_objects):
-                        print(f"  현재 time step:{step}, Object {i}: Offset = {off[i]:.2f} m, Center Vel = {cent_vel[i]:.2f} m/s")
-                        print(f"  미래 time step:{step+1}, Object {i}: Offset = {pred_offsets[i, step]:.2f} m, Center Vel = {pred_center_vels[i, step]:.2f} m/s")
+                        pred_off, pred_cent_vel = imm.simulate_n_steps(obj, step, offsets, center_vels, IMMAlg)
+                        # pred_off, pred_cent_vel은 1D 배열 길이 n_steps_pred
+                        pred_offsets[obj.id, step, :] = pred_off
+                        pred_center_vels[obj.id, step, :] = pred_cent_vel
 
 
-                    ### Risk Assessment Function Check
+                    ### Risk Assessment Function Check / 'n_steps' 예측 위험도
                     for obj in objects:
                         curr_Risk = raf.cal_threat(off[obj.id], cent_vel[obj.id])
-                        pred_Risk = raf.cal_threat(pred_offsets[obj.id, step], pred_center_vels[obj.id, step])
+                        # pred_Risk는 n_steps 예측에 대한 위험도 총합
+                        # 먼저, 각 예측 시점의 위험도를 계산하고 총합
+                        pred_risk_array = []
+                        for k in range(n_steps_pred):
+                            r_val = pred_offsets[obj.id, step, k]
+                            v_val = pred_center_vels[obj.id, step, k]
+                            pred_risk_array.append(raf.cal_threat(r_val, v_val))
+                        pred_Risk = np.sum(pred_risk_array)
                         curr_Risks[obj.id, step] = curr_Risk
                         pred_Risks[obj.id, step] = pred_Risk
 
-
+                    for i in range(num_objects):
+                        print(
+                            f"  Object {i}: Current Risk = {curr_Risks[i, step]:.2f}, Predicted Risk = {pred_Risks[i, step]:.2f}")
                     step += 1
                 else:
                     running = False
         clock.tick(60)
     pygame.quit()
+
     print("\nFinal Results:")
-    print("Offsets (m):")
+    print("Offsets (m), {}:".format(offsets.shape))
     print(offsets)
-    print("Pred Offsets (m):")
+    print("Predicted Offsets (m), {}:".format(pred_offsets.shape))
     print(pred_offsets)
     print("Center Velocities (m/s):")
     print(center_vels)
-    print("Pred Center Velocities (m/s):")
+    print("Predicted Center Velocities (m/s):")
     print(pred_center_vels)
-
-    np.set_printoptions(suppress=True, formatter={'float_kind': lambda x: f"{x:.0f}"})
-    print("Curr Risk Assessment :")
+    print("Current Risk Assessments:")
     print(curr_Risks)
-    print("Pred Risk Assessment :")
+    print("Predicted Risk Assessments:")
     print(pred_Risks)
+
+    graph.plot_offsets(max_steps, offsets, pred_offsets, n_steps_pred)
 
 
 if __name__ == "__main__":
     main()
-# if __name__=="__main__":
-#     # num_objects = 3
-#     #
-#     # environment_init(num_objects)
-#     #
-#     # imm_init()
-#     # #imm_init(single or multi = 0 or 1)
-#     #
-#     #     for
-#     #         q_k, dot_q_k = iter_env()
-#     #         # [객체 수, q_k, dot_q_k, time_step]
-#     #
-#     #         next_hat_q, next_hat_dot_q, next_hat_P = iter_imm(q_k, dot_q_k)
-#     #
-#     #         W = raf(q_k, dot_q_k)
-#     #         W_prime = raf(next_hat_q, next_hat_dot_q)
-#
+

@@ -1,14 +1,28 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+# def cal_threat(q, dot_q):
+#     l = 12
+#     eps = 1e-6  # 아주 작은 상수
+#     # q - 2가 0에 가까울 때 eps를 더해 0으로 나누는 오류 방지
+#     T_q = l / ((q - 2) if abs(q - 2) > eps else np.sign(q - 2) * eps)
+#     T_dot_q = 1 + np.tanh(dot_q)
+#     W = np.exp(T_q * T_dot_q)
+#     return W
+
 def cal_threat(q, dot_q):
     l = 12
-    eps = 1e-6  # 아주 작은 상수
-    # q - 2가 0에 가까울 때 eps를 더해 0으로 나누는 오류 방지
+    eps = 1e-6
     T_q = l / ((q - 2) if abs(q - 2) > eps else np.sign(q - 2) * eps)
     T_dot_q = 1 + np.tanh(dot_q)
     W = np.exp(T_q * T_dot_q)
     return W
+
+def cal_total_threat(q_array, dot_q_array):
+    risks = [cal_threat(q, dq) for q, dq in zip(q_array, dot_q_array)]
+    total_risk = np.sum(risks)
+    return total_risk, np.array(risks)
+
 
 def draw_threat(time_steps, threat_values, num_objects):
     ############ 100 리미트 #############
