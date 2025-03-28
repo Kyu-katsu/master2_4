@@ -14,6 +14,7 @@ def cal_threat(q, dot_q):
     l = 12
     eps = 1e-6
     T_q = l / ((q - 2) if abs(q - 2) > eps else np.sign(q - 2) * eps)
+    # (진우 수정) x3 적용.
     T_dot_q = 1 + np.tanh(dot_q * 3)
     W = np.exp(T_q * T_dot_q)
     return W
