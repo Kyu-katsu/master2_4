@@ -18,6 +18,7 @@ class IMM:
 
         # (중요) bar_q는 각 차선마다 계산되는 값인거고, 모델 확률(\mu)에 따라서 진짜 그 차선에서 그 정도의 오프셋을 가지고 존재할지를 판단할 수 있는 것.
         self.P = init_distribution_var  # 분포 분산 \mathbf{P}
+        # (진우 수정) 파라미터 조정.
         self.p_0 = np.array([[0.14, 0.015, 0.01],
                              [0.045, 0.1, 0.045],
                              [0.01, 0.015, 0.14]])  # 3x3 행렬
@@ -158,7 +159,7 @@ class IMM:
             row_sums[row_sums == 0] = 1  # 0으로 나누는 오류 방지
             return matrix / row_sums
 
-
+    # (진우 수정) 파라미터 조정.
     def TPM_get_rho_sigma(self, i, j):
         diff = abs(i - j)
         if diff == 1:
