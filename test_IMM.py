@@ -7,6 +7,7 @@ matplotlib.use('TkAgg')  # 또는 'Qt5Agg'
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 
+# (진우 수정3) 필요 없는 출력 없앰
 class IMM:
     def __init__(self, init_model_prob, init_state_estimates, init_distribution_var, time_steps, n_steps=1):
         self.model_num = 3  # 모델 개수 M
@@ -35,10 +36,11 @@ class IMM:
         self.predicted_loc_values = np.zeros(self.time_steps)  # 예측 위치 저장용
         self.predicted_cov = np.zeros(self.time_steps)
 
-        print("Setting offset: {}".format(init_state_estimates))
-        print("Setting mu: {}".format(self.mu))
-        print("Setting bar q: {}".format(self.bar_q))
-        print("Setting P: {}".format(self.P))
+
+        # print("Setting offset: {}".format(init_state_estimates))
+        # print("Setting mu: {}".format(self.mu))
+        # print("Setting bar q: {}".format(self.bar_q))
+        # print("Setting P: {}".format(self.P))
 
 
     def draw_PDF(self):  # ---------------------------- PDF 그래프 ----------------------------
@@ -194,13 +196,13 @@ class IMM:
 
                 p_0_updated[i, j] = self.p_0[i, j] + epsilon
 
-        print("Before Normalize TPM, p_(0, ij):\n {}".format(p_0_updated))  # 시험 출력
+        # print("Before Normalize TPM, p_(0, ij):\n {}".format(p_0_updated))  # 시험 출력
 
         # Normalize p_0_updated to get TPM
         TPM = self.row_wise_normalization(p_0_updated)
 
         # self.p_0 = TPM   # Update p_0 for the next iteration
-        print("Transition Probability Matrix:\n {}".format(TPM))  # 시험 출력
+        # print("Transition Probability Matrix:\n {}".format(TPM))  # 시험 출력
         return TPM
 
 
@@ -225,13 +227,13 @@ class IMM:
 
                 p_0_updated[i, j] = self.p_0[i, j] + epsilon
 
-        print("Before Normalize TPM, p_(0, ij):\n {}".format(p_0_updated))  # 시험 출력
+        # print("Before Normalize TPM, p_(0, ij):\n {}".format(p_0_updated))  # 시험 출력
 
         # Normalize p_0_updated to get TPM
         TPM = self.row_wise_normalization(p_0_updated)
 
         # self.p_0 = TPM   # Update p_0 for the next iteration
-        print("Transition Probability Matrix:\n {}".format(TPM))  # 시험 출력
+        # print("Transition Probability Matrix:\n {}".format(TPM))  # 시험 출력
         return TPM
 
 
@@ -255,13 +257,13 @@ class IMM:
 
                 p_0_updated[i, j] = self.p_0[i, j] + epsilon
 
-        print("Before Normalize TPM, p_(0, ij):\n {}".format(p_0_updated))  # 시험 출력
+        # print("Before Normalize TPM, p_(0, ij):\n {}".format(p_0_updated))  # 시험 출력
 
         # Normalize p_0_updated to get TPM
         TPM = self.row_wise_normalization(p_0_updated)
 
         # self.p_0 = TPM   # Update p_0 for the next iteration
-        print("Transition Probability Matrix:\n {}".format(TPM))  # 시험 출력
+        # print("Transition Probability Matrix:\n {}".format(TPM))  # 시험 출력
         return TPM
 
 
@@ -277,18 +279,18 @@ class IMM:
         for j in range(3):  # 혼합 모델 확률, \mu_{k|k-1}^{j}
             mixed_mu[j] = np.sum(TPM[:, j].T * self.mu)
         mixed_mu = self.row_wise_normalization(mixed_mu)
-        print("Mixed mu: {}".format(mixed_mu))
+        # print("Mixed mu: {}".format(mixed_mu))
 
         for i in range(3):  # 혼합 비율, \mu_{k|k-1}^{i|j} = \mu_{k|k-1}^{ij}
             for j in range(3):
                 if mixed_mu[j] != 0:  # 0으로 나누는 오류 방지
                     mixed_ratio[i, j] = (TPM[i, j] * self.mu[i]) / mixed_mu[j]
-        print("Mixed ratio: {}".format(mixed_ratio))
+        # print("Mixed ratio: {}".format(mixed_ratio))
 
         for j in range(3):  # 혼합 상태 추정치, \bar{q}_{k|k-1}^j
             mixed_bar_q[j] = np.sum(mixed_ratio[:, j].T * self.bar_q)
 
-        print("Mixed bar q: {}".format(mixed_bar_q))
+        # print("Mixed bar q: {}".format(mixed_bar_q))
 
         for j in range(3):  # 혼합 오차 공분산, \mathbb{P}_{k|k-1}^j
             sum_value = 0
@@ -296,7 +298,7 @@ class IMM:
                 diff = self.bar_q[i] - mixed_bar_q[i]
                 sum_value += mixed_ratio[i][j] * (self.P[j] + diff * diff)  # 가중합 계산
             mixed_P[j] = sum_value
-        print("Mixed P: {}".format(mixed_P))
+        # print("Mixed P: {}".format(mixed_P))
 
         return mixed_mu, mixed_ratio, mixed_bar_q, mixed_P
         # \mu_{k|k-1}^j, \mu_{k|k-1}^{ij}, \hat{q}_{k|k-1}^j, \mathbb{P}_{k|k-1}^j
@@ -340,34 +342,34 @@ def cov_print(time_steps, objects, predicted_cov):
 
 
 def simulate_steps(obj, time_step, curr_offsets, curr_velocities, IMM_to_main):
-    print("=============================================================")
-    print("{}번 객체에 대한 {}번째 IMM 진행".format(obj.id, time_step))
+    # print("=============================================================")
+    # print("{}번 객체에 대한 {}번째 IMM 진행".format(obj.id, time_step))
 
     TPM = IMM_to_main.generate_TPM_CDF(curr_velocities[obj.id, time_step])
     mixed_mu, mixed_ratio, mixed_bar_q, mixed_P = IMM_to_main.mixed_prediction(TPM)
 
-    print("객체 위치 : {}".format(curr_offsets[obj.id, time_step]))
+    # print("객체 위치 : {}".format(curr_offsets[obj.id, time_step]))
     if curr_offsets[obj.id, time_step] <= 4:
         roi = 1
     elif 4 < curr_offsets[obj.id, time_step] <= 8:
         roi = 2
     else:
         roi = 3
-    print("객체 위치 : RoI {}".format(roi))
+    # print("객체 위치 : RoI {}".format(roi))
 
     residual_term = curr_offsets[obj.id, time_step] - mixed_bar_q
-    print("resual_term :", residual_term)
+    # print("resual_term :", residual_term)
     filtered_mu = IMM_to_main.filter_prediction(mixed_mu, mixed_P, residual_term)  # 필터 단계, \mu만 갱신
     IMM_to_main.mu_values[time_step] = filtered_mu
-    print("Filtered mu: {}".format(filtered_mu))
+    # print("Filtered mu: {}".format(filtered_mu))
 
     predicted_loc = filtered_mu[0] * 2 + filtered_mu[1] * 6 + filtered_mu[2] * 10
     predicted_covariance = 0
     for lane in range(3):
         predicted_covariance += filtered_mu[lane] * (mixed_P[lane] + ((mixed_bar_q[lane] - predicted_loc) ** 2))
 
-    print("Predict loc: {}".format(predicted_loc))
-    print("Predict covariance: {}".format(predicted_covariance))
+    # print("Predict loc: {}".format(predicted_loc))
+    # print("Predict covariance: {}".format(predicted_covariance))
     IMM_to_main.predicted_loc_values[time_step] = predicted_loc  # 예측 위치 저장
     IMM_to_main.predicted_cov[time_step] = predicted_covariance
 

@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import os
 
 def plot_time_series(time_steps, data, ylabel, title, legend_labels=None):
     """
@@ -107,3 +108,65 @@ def plot_offsets(max_steps, offsets, pred_offsets, n_steps):
     plt.legend()
     plt.grid(True)
     plt.show()
+
+
+# (진우 수정3) 그래프 저장하는 함수.
+def save_plot_offsets(max_steps, offsets, pred_offsets, n_steps, filename):
+    """
+    현재 offset과 예측 offset을 시각적으로 비교하는 함수.
+
+    Parameters:
+    - max_steps: 총 시뮬레이션 스텝 수
+    - offsets: shape (num_objects, max_steps) - 현재 offset 값
+    - pred_offsets: shape (num_objects, max_steps, n_steps) - n_steps만큼의 예측 offset 값
+    - n_steps: 미래 예측 스텝 수 (1 이상)
+    - filename: 저장할 그래프 이름.
+
+    - 각 객체별로 현재 offset과, n_steps 개수만큼의 미래 예측 offset을 다른 색상과 스타일로 표현.
+    """
+
+    # 저장할 디렉토리 생성
+    save_dir = "Offset_plots"
+    os.makedirs(save_dir, exist_ok=True)
+    save_path = os.path.join(save_dir, filename)
+
+
+    num_objects = offsets.shape[0]  # 동적 객체 개수
+    time_steps = np.arange(max_steps)  # (max_steps,) 형태의 1D 배열로 변환
+
+    colors = ['blue', 'green', 'red', 'purple', 'orange', 'brown', 'cyan', 'magenta']
+
+    plt.figure(figsize=(12, 6))
+
+    for i in range(num_objects):
+        # 현재 offset을 실선으로 표시
+        plt.plot(time_steps, offsets[i, :], label=f'Object {i} Current Offset',
+                 color=colors[i % len(colors)], linestyle='-')
+
+        # # n_steps 개수만큼의 미래 예측 값을 점선으로 표시
+        # for step in range(n_steps):
+        #     plt.plot(time_steps, pred_offsets[i, :, step],
+        #              label=f'Object {i} Predicted Offset (Step {step + 1})',
+        #              color=colors[i % len(colors)], linestyle='--', alpha=0.6)
+
+        # (진우수정) 예측값 1타임씩 밀리게
+        time_steps = np.arange(max_steps)
+        # 예측 값은 1, 2, 3, ... max_steps (즉, 한 타임 스텝 뒤로 밀림)
+        pred_time_steps = np.arange(1, max_steps + 1)
+        for step in range(n_steps):
+            plt.plot(pred_time_steps, pred_offsets[i, :, step],
+                     label=f'Object {i} Predicted Offset (Step {step + 1})',
+                     color=colors[i % len(colors)], linestyle='--', alpha=0.6)
+
+
+    plt.xticks(np.arange(0, max_steps+1, 10))
+    plt.xlabel('Time Step')
+    plt.ylabel('Offset (m)')
+    plt.ylim((0,12))
+    plt.title(f'Current vs {n_steps}-Step Predicted Offsets')
+    plt.legend()
+    plt.grid(True)
+
+    # 저장
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
+    plt.close()

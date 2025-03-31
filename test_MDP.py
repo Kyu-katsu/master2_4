@@ -36,6 +36,29 @@ def cal_total_based_action(num_obj, time_steps, threat_values, pred_threat_value
         actions[j] = max_idx
     return actions
 
+# (진우 수정3) 랜덤 액션 출력
+def random_action(num_obj, time_steps):
+    """
+
+    :param num_obj: 객체의 수
+    :param time_steps: 타임스탭 수
+    :return: 랜덤 액션 시퀀스
+    """
+    random_actions = np.random.randint(0, num_obj, size=time_steps).tolist()
+
+    return random_actions
+
+
+def cal_reward(num_obj, time_steps, threat_values, actions):
+    reward = 0
+
+    for j in range(time_steps):
+        for i in range(num_obj):
+            if actions[j] != i:
+                reward += threat_values[i][j]
+
+    return reward
+
 def cal_reward_after_10(num_obj, time_steps, threat_values, actions):
     reward = 0
     # (진우 수정2) 시점 혼동 수정 j -> j+1
