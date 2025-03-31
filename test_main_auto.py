@@ -104,11 +104,15 @@ def main():
 
     # 액션, 리워드 계산
     import test_MDP as mdp
-    curr_based_actions = mdp.cal_acrtion(num_objects, max_steps, curr_Risks)
-    pred_based_actions = mdp.cal_acrtion(num_objects, max_steps, pred_Risks)
+    curr_based_actions = mdp.cal_action(num_objects, max_steps, curr_Risks)
+    pred_based_actions = mdp.cal_action(num_objects, max_steps, pred_Risks)
 
     curr_based_reward = mdp.cal_reward_after_10(num_objects, max_steps, curr_Risks, curr_based_actions)
     pred_based_reward = mdp.cal_reward_after_10(num_objects, max_steps, curr_Risks, pred_based_actions)
+
+    # (진우 수정2) Total risk 방식 액션, 리워드 계산
+    total_based_actions = mdp.cal_total_based_action(num_objects, max_steps, curr_Risks, pred_Risks)
+    total_based_reward = mdp.cal_reward_after_10(num_objects, max_steps, curr_Risks, total_based_actions)
 
     print("\nFinal Results:")
     print("Offsets (m), {}:".format(offsets.shape))
@@ -124,17 +128,19 @@ def main():
     print("Predicted Risk Assessments:")
     print(pred_Risks)
 
-    # 액션, 리워드 출력
+    # (진우 수정2) Total Risk Based 액션, 리워드 출력 추가.
     print("Current Risk Based Actions:")
     print(curr_based_actions)
     print("Pred Risk Based Actions:")
     print(pred_based_actions)
+    print("total Risk Based Actions:")
+    print(total_based_actions)
     print("Current Risk Based reward:")
     print(curr_based_reward)
     print("Pred Risk Based reward:")
     print(pred_based_reward)
-
-
+    print("total Risk Based reward:")
+    print(total_based_reward)
 
     graph.plot_offsets(max_steps, offsets, pred_offsets, n_steps_pred)
 
@@ -142,10 +148,6 @@ def main():
 
 if __name__ == "__main__":
     reward = []
-    iter = 10
+    iter = 100
     for i in range(iter):
         rewards = main()
-        reward.append(rewards)
-
-    for i in range(iter):
-        print(reward[i][1] - reward[i][0])

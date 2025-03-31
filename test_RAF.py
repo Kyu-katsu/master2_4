@@ -14,9 +14,12 @@ def cal_threat(q, dot_q):
     l = 12
     eps = 1e-6
     T_q = l / ((q - 2) if abs(q - 2) > eps else np.sign(q - 2) * eps)
-    # (진우 수정) x3 적용.
-    T_dot_q = 1 + np.tanh(dot_q * 3)
+    # (진우 수정2) x3이 아니라 /3이 맞는거 같아 수정 -> /3해야 속도가 덜 중요해짐.
+    T_dot_q = 1 + np.tanh(dot_q / 3)
     W = np.exp(T_q * T_dot_q)
+    # # (진우 수정2) 위협지수 너무 커지는 것 방지.
+    # if W > 10000:
+    #     W = 10000
     return W
 
 def cal_total_threat(q_array, dot_q_array):
