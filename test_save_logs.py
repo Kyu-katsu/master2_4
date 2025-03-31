@@ -2,6 +2,8 @@ import pandas as pd
 import numpy as np
 from openpyxl import load_workbook
 
+# (진우 수정3) 로그 저장해주는 함수들
+
 def save_risks(iter, max_steps, curr_Risks, pred_Risks):
     """
     현재 기반 위협지수, 예측 기반 위협지수 액셀 파일로 저장.
