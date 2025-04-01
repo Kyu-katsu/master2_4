@@ -35,7 +35,7 @@ def main(iter):
 
     num_objects = 3
     max_steps = 100    # 총 100 real time steps (예: 0.1초씩이면 10초)
-    real_dt = 0.1         # real time step 간격 (초)
+    real_dt = 0.1        # real time step 간격 (초)
     n_steps_pred = 1    # IMM 예측 horizon (n time steps, 예: 1 또는 5)
 
     # 객체 생성 (ID: 0, 1, 2)
@@ -167,9 +167,49 @@ def main(iter):
     save_logs.save_rewards(iter, random_based_reward, curr_based_reward, pred_based_reward, total_based_reward)
     save_logs.fit_exal(iter)
 
+    # (진우 수정4) 여러번 돌려서 case 1~4의 우승 횟수(리워드 제일 작은지) 확인
+    rewards = [random_based_reward, curr_based_reward, pred_based_reward, total_based_reward]
+    min_reward = min(rewards)
+    min_indices = [i for i, val in enumerate(rewards) if val == min_reward]
+    print(iter, min_indices)
+
+    # (진우 수정4) 차이 큰 애들 볼려고
+    residual = curr_based_reward - total_based_reward
+
+    return min_indices, residual
 
 if __name__ == "__main__":
     iteration = 10
+
+    # (진우 수정4) 여러번 돌려서 case 1~4의 우승 횟수(리워드 제일 작은지) 확인
+    win_count = np.zeros((15))
+    max_residual = 0
+
+
+    # 의미 있는 인덱스 조합 정의
+    index_meanings = [
+        [0], [1], [2], [3],
+        [0, 1], [0, 2], [0, 3], [1, 2], [1, 3], [2, 3],
+        [0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3], [0, 1, 2, 3]
+    ]
+
+    # 조합을 튜플로 바꿔서 딕셔너리로 매핑
+    index_map = {tuple(k): i for i, k in enumerate(index_meanings)}
+
+
+    # 메인 반복문
     for iter in range(iteration):
-        # (진우 수정3) 그래프, 로그 저장을 위한 iter변수 추가
-        main(iter)
+        min_indices, residual = main(iter)
+        if residual > max_residual:
+            max_residual = residual
+            max_residual_iter = iter
+        key = tuple(sorted(min_indices))
+        if key in index_map:
+            win_count[index_map[key]] += 1
+
+    # 출력
+    for i, count in enumerate(win_count):
+        if count != 0:
+            print(f"{index_meanings[i]} 갯수 : {count}")
+
+    print("max_residual_iter :", max_residual_iter)

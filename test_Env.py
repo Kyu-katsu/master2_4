@@ -40,9 +40,11 @@ class DynamicObject:
     def __init__(self, id, dt):
         self.id = id  # 객체 ID 추가
 
+        self.r_min = 3
+        self.r_max = 9
         # 극좌표계를 이용하여 초기 실제 위치 (미터 단위)를 생성
         # r는 2m ~ 10m 사이, theta는 0 ~ 2π 사이에서 랜덤 선택
-        self.r = np.random.uniform(3, 9)
+        self.r = np.random.uniform(self.r_min, self.r_max)
         # (진우 수정) 마지노선 3~9로
         self.theta = np.random.uniform(0, 2 * np.pi)
         # 실제 좌표: (x, y) = (r cosθ, r sinθ)
@@ -92,7 +94,7 @@ class DynamicObject:
         # 6. 경계 검사: 중심에서의 현재 거리 계산
         current_r = math.sqrt(self.x ** 2 + self.y ** 2)
         # (진우 수정) 마지노선 3~9로
-        if current_r < 3 or current_r > 9:
+        if current_r < self.r_min or current_r > self.r_max:
             vx = self.speed * np.cos(self.direction)
             vy = self.speed * np.sin(self.direction)
             n_x = self.x / current_r
@@ -101,12 +103,12 @@ class DynamicObject:
             new_vx = vx - 2 * dot * n_x
             new_vy = vy - 2 * dot * n_y
             self.direction = math.atan2(new_vy, new_vx)
-            if current_r < 3:
-                self.x = 3 * n_x
-                self.y = 3 * n_y
-            elif current_r > 9:
-                self.x = 9 * n_x
-                self.y = 9 * n_y
+            if current_r < self.r_min:
+                self.x = self.r_min * n_x
+                self.y = self.r_min * n_y
+            elif current_r > self.r_max:
+                self.x = self.r_max * n_x
+                self.y = self.r_max * n_y
 
         # 7. offset 업데이트 및 중심 방향 속력 재계산
         self.offset = math.sqrt(self.x ** 2 + self.y ** 2)
