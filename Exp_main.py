@@ -34,7 +34,7 @@ def main():
     num_objects = 3
     max_steps = 100    # 총 100 real time steps (예: 0.1초씩이면 10초)
     real_dt = 0.1      # real time step 간격 (초)
-    n_steps_pred = 1   # IMM 예측 horizon (n time steps, 예: 1 또는 5)
+    n_steps_pred = 3      # IMM 예측 horizon (n time steps, 예: 1 또는 5)
 
     # 객체 생성 (ID: 0, 1, 2)
     objects = [env.DynamicObject(id=i) for i in range(num_objects)]

@@ -4,7 +4,7 @@ from openpyxl import load_workbook
 
 # (진우 수정3) 로그 저장해주는 함수들
 
-def save_risks(iter, max_steps, curr_Risks, pred_Risks):
+def save_risks(iter, max_steps, n_steps_pred, curr_Risks, pred_Risks):
     """
     현재 기반 위협지수, 예측 기반 위협지수 액셀 파일로 저장.
     :param iter:
@@ -23,12 +23,12 @@ def save_risks(iter, max_steps, curr_Risks, pred_Risks):
         "Object 2 - Predicted Risk": pred_Risks[2]
     })
 
-    excel_filename = f"Logs/(2,10)_Logs_iter_{iter}.xlsx"
+    excel_filename = f"Logs/(2,10)MDP{max_steps}step_IMM{n_steps_pred}step_Logs_iter_{iter}.xlsx"
 
 
     df_risks.to_excel(excel_filename, index=False)
 
-def save_actions(iter, random_based_actions, curr_based_actions, pred_based_actions, total_based_actions):
+def save_actions(iter, max_steps, n_steps_pred, random_based_actions, curr_based_actions, pred_based_actions, total_based_actions):
     """
     case 1,2,3,4의 액션 시퀀스 액셀에 추가
     :param iter:
@@ -39,7 +39,7 @@ def save_actions(iter, random_based_actions, curr_based_actions, pred_based_acti
     :return:
     """
 
-    excel_filename = f"Logs/(2,10)_Logs_iter_{iter}.xlsx"
+    excel_filename = f"Logs/(2,10)MDP{max_steps}step_IMM{n_steps_pred}step_Logs_iter_{iter}.xlsx"
 
     # 1. 기존 엑셀 불러오기
     df_existing = pd.read_excel(excel_filename)
@@ -57,7 +57,7 @@ def save_actions(iter, random_based_actions, curr_based_actions, pred_based_acti
     # 4. 덮어쓰기 저장
     df_merged.to_excel(excel_filename, index=False)
 
-def save_rewards(iter, random_based_reward, curr_based_reward, pred_based_reward, total_based_reward):
+def save_rewards(iter, max_steps, n_steps_pred, random_based_reward, curr_based_reward, pred_based_reward, total_based_reward):
     """
     case 1,2,3,4의 리워드(10 스탭 이후의) 액셀에 추가
     :param iter:
@@ -67,7 +67,7 @@ def save_rewards(iter, random_based_reward, curr_based_reward, pred_based_reward
     :param total_based_reward:
     :return:
     """
-    excel_filename = f"Logs/(2,10)_Logs_iter_{iter}.xlsx"
+    excel_filename = f"Logs/(2,10)MDP{max_steps}step_IMM{n_steps_pred}step_Logs_iter_{iter}.xlsx"
 
     rewards_row = pd.DataFrame({
         "Rewards sum after 10 steps":[""],
@@ -83,11 +83,11 @@ def save_rewards(iter, random_based_reward, curr_based_reward, pred_based_reward
 
     df_merged.to_excel(excel_filename, index=False)
 
-def fit_exal(iter):
+def fit_exal(iter, max_steps, n_steps_pred):
     """
     액셀 이쁘게
     """
-    excel_filename = f"Logs/(2,10)_Logs_iter_{iter}.xlsx"
+    excel_filename = f"Logs/(2,10)MDP{max_steps}step_IMM{n_steps_pred}step_Logs_iter_{iter}.xlsx"
     # 열 너비 조절을 위해 openpyxl로 불러와서 조정
     wb = load_workbook(excel_filename)
     ws = wb.active

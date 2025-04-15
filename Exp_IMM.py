@@ -25,12 +25,12 @@ class IMM:
 
 
         self.time_steps = time_steps  # iteration 횟수
-        self.mu_values = np.zeros((self.time_steps, self.model_num))
+        self.mu_values = np.zeros((self.time_steps + self.n_steps, self.model_num))
         # self.mu_values[0] = self.mu  # mu_values 초기값 설정
         self.pos_values = np.zeros(self.time_steps)
         self.pos_residual_squared = np.zeros(self.time_steps)
         self.pos_residual = np.zeros(self.time_steps)
-        self.predicted_loc_values = np.zeros(self.time_steps)  # 예측 위치 저장용
+        self.predicted_loc_values = np.zeros(self.time_steps + self.n_steps)  # 예측 위치 저장용
         self.predicted_cov = np.zeros(self.time_steps)
 
         print("Setting offset: {}".format(init_state_estimates))

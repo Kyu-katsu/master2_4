@@ -111,7 +111,7 @@ def plot_offsets(max_steps, offsets, pred_offsets, n_steps):
 
 
 # (진우 수정3) 그래프 저장하는 함수.
-def save_plot_offsets(max_steps, offsets, pred_offsets, n_steps, filename):
+def save_plot_offsets(max_steps, offsets, n_steps_pred, filename):
     """
     현재 offset과 예측 offset을 시각적으로 비교하는 함수.
 
@@ -130,7 +130,6 @@ def save_plot_offsets(max_steps, offsets, pred_offsets, n_steps, filename):
     os.makedirs(save_dir, exist_ok=True)
     save_path = os.path.join(save_dir, filename)
 
-
     num_objects = offsets.shape[0]  # 동적 객체 개수
     time_steps = np.arange(max_steps)  # (max_steps,) 형태의 1D 배열로 변환
 
@@ -138,32 +137,51 @@ def save_plot_offsets(max_steps, offsets, pred_offsets, n_steps, filename):
 
     plt.figure(figsize=(12, 6))
 
-    for i in range(num_objects):
-        # 현재 offset을 실선으로 표시
-        plt.plot(time_steps, offsets[i, :], label=f'Object {i} Current Offset',
-                 color=colors[i % len(colors)], linestyle='-')
-
-        # # n_steps 개수만큼의 미래 예측 값을 점선으로 표시
-        # for step in range(n_steps):
-        #     plt.plot(time_steps, pred_offsets[i, :, step],
-        #              label=f'Object {i} Predicted Offset (Step {step + 1})',
-        #              color=colors[i % len(colors)], linestyle='--', alpha=0.6)
-
-        # (진우수정) 예측값 1타임씩 밀리게
+    for obj in range(num_objects):
+        # 실제 위치를 연결한 실선 (모든 timestep의 현재 위치: offsets[obj, :, 0])
         time_steps = np.arange(max_steps)
-        # 예측 값은 1, 2, 3, ... max_steps (즉, 한 타임 스텝 뒤로 밀림)
-        pred_time_steps = np.arange(1, max_steps + 1)
-        for step in range(n_steps):
-            plt.plot(pred_time_steps, pred_offsets[i, :, step],
-                     label=f'Object {i} Predicted Offset (Step {step + 1})',
-                     color=colors[i % len(colors)], linestyle='--', alpha=0.6)
+        actual_positions = offsets[obj, :max_steps, 0]
+        plt.plot(time_steps, actual_positions, linestyle='-', marker='o', ms = 3,
+                 color=colors[obj % len(colors)], label=f"Object {obj} Actual")
+
+        # 각 timestep별로 예측 값을 점선으로 표시하고, 개별 점들은 점으로 찍음
+        for step in range(max_steps):
+            # 현재 timestep에서의 현재 위치와 예측값: indices 0 ~ n_steps_pred
+            pred_vals = offsets[obj, step, :n_steps_pred + 1]
+            # x축은 현재 timestep부터 (step, step+1, ..., step+n_steps_pred)
+            x_vals = step + np.arange(n_steps_pred + 1)
+
+            # 점선으로 연결 (예측 궤적)
+            plt.plot(x_vals, pred_vals, linestyle='--',
+                     color=colors[obj % len(colors)], alpha=0.5)
+
+    #
+    # for i in range(num_objects):
+    #     # 현재 offset을 실선으로 표시
+    #     plt.plot(time_steps, offsets[i, :], label=f'Object {i} Current Offset',
+    #              color=colors[i % len(colors)], linestyle='-')
+    #
+    #     # # n_steps 개수만큼의 미래 예측 값을 점선으로 표시
+    #     # for step in range(n_steps):
+    #     #     plt.plot(time_steps, pred_offsets[i, :, step],
+    #     #              label=f'Object {i} Predicted Offset (Step {step + 1})',
+    #     #              color=colors[i % len(colors)], linestyle='--', alpha=0.6)
+    #
+    #     # (진우수정) 예측값 1타임씩 밀리게
+    #     time_steps = np.arange(max_steps)
+    #     # 예측 값은 1, 2, 3, ... max_steps (즉, 한 타임 스텝 뒤로 밀림)
+    #     pred_time_steps = np.arange(1, max_steps + 1)
+    #     for step in range(n_steps):
+    #         plt.plot(pred_time_steps, pred_offsets[i, :, step],
+    #                  label=f'Object {i} Predicted Offset (Step {step + 1})',
+    #                  color=colors[i % len(colors)], linestyle='--', alpha=0.6)
 
 
     plt.xticks(np.arange(0, max_steps+1, 10))
     plt.xlabel('Time Step')
     plt.ylabel('Offset (m)')
-    plt.ylim((0,12))
-    plt.title(f'Current vs {n_steps}-Step Predicted Offsets')
+    plt.ylim((0, 12))
+    plt.title(f'Current vs {n_steps_pred}-Step Predicted Offsets')
     plt.legend()
     plt.grid(True)
 

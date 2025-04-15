@@ -34,24 +34,19 @@ def main(iter):
     screen, clock = env.init_pygame()
 
     num_objects = 3
-    max_steps = 100    # 총 100 real time steps (예: 0.1초씩이면 10초)
-    real_dt = 0.1        # real time step 간격 (초)
-    n_steps_pred = 3    # IMM 예측 horizon (n time steps, 예: 1 또는 5)
+    max_steps = 10    # 총 100 real time steps (예: 0.1초씩이면 10초)
+    real_dt = 1        # real time step 간격 (초)
+    n_steps_pred = 5    # IMM 예측 horizon (n time steps, 예: 1 또는 5)
 
     # 객체 생성 (ID: 0, 1, 2)
     objects = [env.DynamicObject(id=i, dt = real_dt) for i in range(num_objects)]
 
     # 결과 저장 배열 (NumPy 배열; 행: 객체, 열: time step)
-    save_steps = max_steps + n_steps_pred
-    offsets = np.zeros((num_objects, save_steps))
-    center_vels = np.zeros((num_objects, save_steps))
-    pred_offsets = np.zeros((num_objects, save_steps, n_steps_pred))
-    pred_center_vels = np.zeros((num_objects, save_steps, n_steps_pred))
-    curr_Risks = np.zeros((num_objects, save_steps))
-    pred_Risks = np.zeros((num_objects, save_steps))
-
-    # n step IMM value save matrix
-    predicted_positions = np.zeros((num_objects, max_steps, n_steps_pred + 1))
+    save_steps = max_steps
+    offsets = np.zeros((num_objects, max_steps, n_steps_pred + 1))
+    center_vels = np.zeros((num_objects, max_steps, n_steps_pred + 1))
+    risk_vals = np.zeros((num_objects, max_steps, n_steps_pred + 1))
+    # offsets와 center_vels에 [현재, n time step 예측]전부 저장되도록.
 
     ### IMM Algorithm initialize
     initial_probs = [1/3, 1/3, 1/3]
@@ -73,37 +68,26 @@ def main(iter):
             if event.type == pygame.QUIT:
                 running = False
 
-        # 한 real time step 실행
+        # real time step 실행
         off, cent_vel = env.simulate_onestep(objects, real_dt, screen)
         for obj in objects:
-            offsets[obj.id, step] = off[obj.id]
-            center_vels[obj.id, step] = cent_vel[obj.id]
-        # print(f"Real time step {step}:")
-        # for i in range(num_objects):
-        #     print(f"  Object {i}: Offset = {off[i]:.2f} m, Center Vel = {cent_vel[i]:.2f} m/s")
+            offsets[obj.id, step, 0] = off[obj.id]
+            center_vels[obj.id, step, 0] = cent_vel[obj.id]
 
         ### IMM Algorithm for 'n_steps' Predicted pos, vel
         for obj in objects:
             pred_off, pred_cent_vel = imm.simulate_n_steps(obj, step, offsets, center_vels, IMMAlg[obj.id])
             # pred_off, pred_cent_vel은 1D 배열 길이 n_steps_pred
-            pred_offsets[obj.id, step, :] = pred_off
-            pred_center_vels[obj.id, step, :] = pred_cent_vel
+            offsets[obj.id, step, 1:1+n_steps_pred] = pred_off
+            center_vels[obj.id, step, 1:1+n_steps_pred] = pred_cent_vel
+        # print('offsets: {}'.format(offsets))
+        # print('center_vels: {}'.format(center_vels))
 
         ### Risk Assessment Function Check / 'n_steps' 예측 위험도
         for obj in objects:
-            curr_Risk = raf.cal_threat(off[obj.id], cent_vel[obj.id])
-            # pred_Risk는 n_steps 예측에 대한 위험도 총합
-            pred_risk_array = []
-            for k in range(n_steps_pred):
-                r_val = pred_offsets[obj.id, step, k]
-                v_val = pred_center_vels[obj.id, step, k]
-                pred_risk_array.append(raf.cal_threat(r_val, v_val))
-            pred_Risk = np.sum(pred_risk_array)
-            curr_Risks[obj.id, step] = curr_Risk
-            pred_Risks[obj.id, step] = pred_Risk
-
-        # for i in range(num_objects):
-        #     print(f"  Object {i}: Current Risk = {curr_Risks[i, step]:.2f}, Predicted Risk = {pred_Risks[i, step]:.2f}")
+            for k in range(n_steps_pred + 1):
+                risk_vals[obj.id, step, k] = raf.cal_threat(offsets[obj.id, step, k], center_vels[obj.id, step, k])
+        # print('risk_vals: {}'.format(risk_vals))
 
         step += 1
         clock.tick(60)  # 초당 최대 60 프레임으로 실행
@@ -112,6 +96,13 @@ def main(iter):
 
     # 액션, 리워드 계산
     import test_MDP as mdp
+    curr_Risks = risk_vals[:, :, 0]  # shape: (num_objects, save_steps)
+    gamma = 0.9
+    weights = np.array([gamma ** (i + 1) for i in range(n_steps_pred)])
+    pred_Risks = np.sum(risk_vals[:, :, 1:] * weights[np.newaxis, np.newaxis, :], axis=2)  # shape: (num_objects, save_steps)
+    # curr_offsets = offsets[:, :, 0]
+    # pred_offsets = offsets[:, :, 1:1+n_steps_pred]
+
     curr_based_actions = mdp.cal_action(num_objects, save_steps, curr_Risks)
     pred_based_actions = mdp.cal_action(num_objects, save_steps, pred_Risks)
 
@@ -126,50 +117,17 @@ def main(iter):
     random_based_actions = mdp.random_action(num_objects, save_steps)
     random_based_reward = mdp.cal_reward_after_10(num_objects, save_steps, curr_Risks, random_based_actions)
 
-    # print("\nFinal Results:")
-    # print("Offsets (m), {}:".format(offsets.shape))
-    # print(offsets)
-    # print("Predicted Offsets (m), {}:".format(pred_offsets.shape))
-    # print(pred_offsets)
-    # print("Center Velocities (m/s):")
-    # print(center_vels)
-    # print("Predicted Center Velocities (m/s):")
-    # print(pred_center_vels)
-    # print("Current Risk Assessments:")
-    # print(curr_Risks)
-    # print("Predicted Risk Assessments:")
-    # print(pred_Risks)
-
-    # # (진우 수정2) Total Risk Based 액션, 리워드 출력 추가.
-    # # (진우 수정3) Random policy 액션, 리워드 출력 추가
-    # print("Random Risk Actions:")
-    # print(random_based_actions)
-    # print("Current Risk Based Actions:")
-    # print(curr_based_actions)
-    # print("Pred Risk Based Actions:")
-    # print(pred_based_actions)
-    # print("total Risk Based Actions:")
-    # print(total_based_actions)
-    # print("Random Risk Based reward:")
-    # print(random_based_reward)
-    # print("Current Risk Based reward:")
-    # print(curr_based_reward)
-    # print("Pred Risk Based reward:")
-    # print(pred_based_reward)
-    # print("total Risk Based reward:")
-    # print(total_based_reward)
-
     # (진우 수정3) 그래프 저장. 저장 위치: Offset_plots 파일 안.
     os.makedirs("Offset_plots", exist_ok=True)
-    filename = f"offset_plot_{iter}.png"
-    graph.save_plot_offsets(save_steps, offsets, pred_offsets, n_steps_pred,filename)
+    filename = f"MDP{max_steps}step_IMM{n_steps_pred}step_offset_plot_{iter}.png"
+    graph.save_plot_offsets(save_steps, offsets, n_steps_pred, filename)
 
     # (진우 수정3) 로그 저장. 저장 위치: Logs 파일 안.
     os.makedirs("Logs", exist_ok=True)
-    save_logs.save_risks(iter, save_steps, curr_Risks, pred_Risks)
-    save_logs.save_actions(iter, random_based_actions, curr_based_actions, pred_based_actions, total_based_actions)
-    save_logs.save_rewards(iter, random_based_reward, curr_based_reward, pred_based_reward, total_based_reward)
-    save_logs.fit_exal(iter)
+    save_logs.save_risks(iter, save_steps, n_steps_pred, curr_Risks, pred_Risks)
+    save_logs.save_actions(iter, max_steps, n_steps_pred, random_based_actions, curr_based_actions, pred_based_actions, total_based_actions)
+    save_logs.save_rewards(iter, max_steps, n_steps_pred, random_based_reward, curr_based_reward, pred_based_reward, total_based_reward)
+    save_logs.fit_exal(iter, max_steps, n_steps_pred)
 
     # (진우 수정4) 여러번 돌려서 case 1~4의 우승 횟수(리워드 제일 작은지) 확인
     rewards = [random_based_reward, curr_based_reward, pred_based_reward, total_based_reward]
@@ -182,13 +140,13 @@ def main(iter):
 
     return min_indices, residual
 
+
 if __name__ == "__main__":
-    iteration = 10
+    iteration = 100
 
     # (진우 수정4) 여러번 돌려서 case 1~4의 우승 횟수(리워드 제일 작은지) 확인
     win_count = np.zeros((15))
     max_residual = 0
-
 
     # 의미 있는 인덱스 조합 정의
     index_meanings = [
@@ -199,7 +157,6 @@ if __name__ == "__main__":
 
     # 조합을 튜플로 바꿔서 딕셔너리로 매핑
     index_map = {tuple(k): i for i, k in enumerate(index_meanings)}
-
 
     # 메인 반복문
     for iter in range(iteration):
