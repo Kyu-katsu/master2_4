@@ -42,12 +42,16 @@ def main(iter):
     objects = [env.DynamicObject(id=i, dt = real_dt) for i in range(num_objects)]
 
     # 결과 저장 배열 (NumPy 배열; 행: 객체, 열: time step)
-    offsets = np.zeros((num_objects, max_steps))
-    center_vels = np.zeros((num_objects, max_steps))
-    pred_offsets = np.zeros((num_objects, max_steps, n_steps_pred))
-    pred_center_vels = np.zeros((num_objects, max_steps, n_steps_pred))
-    curr_Risks = np.zeros((num_objects, max_steps))
-    pred_Risks = np.zeros((num_objects, max_steps))
+    save_steps = max_steps + n_steps_pred
+    offsets = np.zeros((num_objects, save_steps))
+    center_vels = np.zeros((num_objects, save_steps))
+    pred_offsets = np.zeros((num_objects, save_steps, n_steps_pred))
+    pred_center_vels = np.zeros((num_objects, save_steps, n_steps_pred))
+    curr_Risks = np.zeros((num_objects, save_steps))
+    pred_Risks = np.zeros((num_objects, save_steps))
+
+    # n step IMM value save matrix
+    predicted_positions = np.zeros((num_objects, max_steps, n_steps_pred + 1))
 
     ### IMM Algorithm initialize
     initial_probs = [1/3, 1/3, 1/3]
@@ -57,13 +61,13 @@ def main(iter):
     # 각 객체마다 개별 imm 인스턴스 생성
     IMMAlg = []
     for i in range(num_objects):
-        IMMAlg.append(imm.IMM(initial_probs, init_state_estimate, initial_variances, max_steps, n_steps=n_steps_pred))
+        IMMAlg.append(imm.IMM(initial_probs, init_state_estimate, initial_variances, save_steps, n_steps=n_steps_pred))
 
     step = 0
     running = True
     print("자동 시뮬레이션을 시작합니다.")
 
-    while running and step < max_steps:
+    while running and step < save_steps:
         # 이벤트 처리 (종료 이벤트 등)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
@@ -108,19 +112,19 @@ def main(iter):
 
     # 액션, 리워드 계산
     import test_MDP as mdp
-    curr_based_actions = mdp.cal_action(num_objects, max_steps, curr_Risks)
-    pred_based_actions = mdp.cal_action(num_objects, max_steps, pred_Risks)
+    curr_based_actions = mdp.cal_action(num_objects, save_steps, curr_Risks)
+    pred_based_actions = mdp.cal_action(num_objects, save_steps, pred_Risks)
 
-    curr_based_reward = mdp.cal_reward_after_10(num_objects, max_steps, curr_Risks, curr_based_actions)
-    pred_based_reward = mdp.cal_reward_after_10(num_objects, max_steps, curr_Risks, pred_based_actions)
+    curr_based_reward = mdp.cal_reward_after_10(num_objects, save_steps, curr_Risks, curr_based_actions)
+    pred_based_reward = mdp.cal_reward_after_10(num_objects, save_steps, curr_Risks, pred_based_actions)
 
     # (진우 수정2) Total risk 방식 액션, 리워드 계산
-    total_based_actions = mdp.cal_total_based_action(num_objects, max_steps, curr_Risks, pred_Risks)
-    total_based_reward = mdp.cal_reward_after_10(num_objects, max_steps, curr_Risks, total_based_actions)
+    total_based_actions = mdp.cal_total_based_action(num_objects, save_steps, curr_Risks, pred_Risks)
+    total_based_reward = mdp.cal_reward_after_10(num_objects, save_steps, curr_Risks, total_based_actions)
 
     # (진우 수정3) Random policy 액션, 리워드 계산
-    random_based_actions = mdp.random_action(num_objects, max_steps)
-    random_based_reward = mdp.cal_reward_after_10(num_objects, max_steps, curr_Risks, random_based_actions)
+    random_based_actions = mdp.random_action(num_objects, save_steps)
+    random_based_reward = mdp.cal_reward_after_10(num_objects, save_steps, curr_Risks, random_based_actions)
 
     # print("\nFinal Results:")
     # print("Offsets (m), {}:".format(offsets.shape))
@@ -158,11 +162,11 @@ def main(iter):
     # (진우 수정3) 그래프 저장. 저장 위치: Offset_plots 파일 안.
     os.makedirs("Offset_plots", exist_ok=True)
     filename = f"offset_plot_{iter}.png"
-    graph.save_plot_offsets(max_steps, offsets, pred_offsets, n_steps_pred,filename)
+    graph.save_plot_offsets(save_steps, offsets, pred_offsets, n_steps_pred,filename)
 
     # (진우 수정3) 로그 저장. 저장 위치: Logs 파일 안.
     os.makedirs("Logs", exist_ok=True)
-    save_logs.save_risks(iter, max_steps, curr_Risks, pred_Risks)
+    save_logs.save_risks(iter, save_steps, curr_Risks, pred_Risks)
     save_logs.save_actions(iter, random_based_actions, curr_based_actions, pred_based_actions, total_based_actions)
     save_logs.save_rewards(iter, random_based_reward, curr_based_reward, pred_based_reward, total_based_reward)
     save_logs.fit_exal(iter)

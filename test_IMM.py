@@ -9,7 +9,7 @@ from scipy.stats import norm
 
 # (진우 수정3) 필요 없는 출력 없앰
 class IMM:
-    def __init__(self, init_model_prob, init_state_estimates, init_distribution_var, time_steps, n_steps=1):
+    def __init__(self, init_model_prob, init_state_estimates, init_distribution_var, time_steps, n_steps):
         self.model_num = 3  # 모델 개수 M
         self.n_steps = n_steps  # 예측할 time step 수
         self.offset_list = []
@@ -28,7 +28,7 @@ class IMM:
 
 
         self.time_steps = time_steps  # iteration 횟수
-        self.mu_values = np.zeros((self.time_steps, self.model_num))
+        self.mu_values = np.zeros((self.time_steps + self.n_steps, self.model_num))
         # self.mu_values[0] = self.mu  # mu_values 초기값 설정
         self.pos_values = np.zeros(self.time_steps)
         self.pos_residual_squared = np.zeros(self.time_steps)
