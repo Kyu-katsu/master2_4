@@ -34,8 +34,8 @@ def main(iter):
     screen, clock = env.init_pygame()
 
     num_objects = 3
-    max_steps = 10    # 총 100 real time steps (예: 0.1초씩이면 10초)
-    real_dt = 1        # real time step 간격 (초)
+    max_steps = 1000    # 총 100 real time steps (예: 0.1초씩이면 10초)
+    real_dt = 0.1        # real time step 간격 (초)
     n_steps_pred = 5    # IMM 예측 horizon (n time steps, 예: 1 또는 5)
 
     # 객체 생성 (ID: 0, 1, 2)
@@ -142,7 +142,7 @@ def main(iter):
 
 
 if __name__ == "__main__":
-    iteration = 100
+    iteration = 10
 
     # (진우 수정4) 여러번 돌려서 case 1~4의 우승 횟수(리워드 제일 작은지) 확인
     win_count = np.zeros((15))
@@ -173,4 +173,4 @@ if __name__ == "__main__":
         if count != 0:
             print(f"{index_meanings[i]} 갯수 : {count}")
 
-    print("max_residual_iter :", max_residual_iter)
+    # print("max_residual_iter :", max_residual_iter)

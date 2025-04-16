@@ -15,7 +15,10 @@ class IMM:
         self.n_steps = n_steps  # 예측할 time step 수
         self.offset_list = []
         self.RoI_middle_line = [2, 6, 10]
-        self.mu = init_model_prob  # 모델 확률 \mu
+        self.mu = np.zeros((self.n_steps + 1, len(init_model_prob)))
+        self.mu[0] = init_model_prob
+
+        # self.mu도 IMM step마다 저장
         self.bar_q = [2, 6, 10]
         # (중요) bar_q는 각 차선마다 계산되는 값인거고, 모델 확률(\mu)에 따라서 진짜 그 차선에서 그 정도의 오프셋을 가지고 존재할지를 판단할 수 있는 것.
         self.P = init_distribution_var  # 분포 분산 \mathbf{P}
@@ -106,7 +109,7 @@ class IMM:
         return TPM
 
 
-    def mixed_prediction(self, TPM):  # 혼합 단계, Interaction(Mixing) Step in CRAA paper.
+    def mixed_prediction(self, TPM, step):  # 혼합 단계, Interaction(Mixing) Step in CRAA paper.
         # model_prob 은 np.array(3)
         # state_estimates 는 np.array(3)
         # distribution_var 는 np.array(3)
@@ -116,13 +119,13 @@ class IMM:
         mixed_P = np.zeros(3)
 
         for j in range(3):  # 혼합 모델 확률, \mu_{k|k-1}^{j}
-            mixed_mu[j] = np.sum(TPM[:, j].T * self.mu)
+            mixed_mu[j] = np.sum(TPM[:, j].T * self.mu[step, :])
         mixed_mu = self.row_wise_normalization(mixed_mu)
 
         for i in range(3):  # 혼합 비율, \mu_{k|k-1}^{i|j} = \mu_{k|k-1}^{ij}
             for j in range(3):
                 if mixed_mu[j] != 0:  # 0으로 나누는 오류 방지
-                    mixed_ratio[i, j] = (TPM[i, j] * self.mu[i]) / mixed_mu[j]
+                    mixed_ratio[i, j] = (TPM[i, j] * self.mu[step, i]) / mixed_mu[j]
 
         for j in range(3):  # 혼합 상태 추정치, \bar{q}_{k|k-1}^j
             mixed_bar_q[j] = np.sum(mixed_ratio[:, j].T * self.bar_q)
@@ -138,7 +141,7 @@ class IMM:
         # \mu_{k|k-1}^j, \mu_{k|k-1}^{ij}, \hat{q}_{k|k-1}^j, \mathbb{P}_{k|k-1}^j
 
 
-    def filter_prediction(self, mixed_model_prob, mixed_distribution_var, residual_offset):
+    def filter_prediction(self, curr, pred_step, mixed_model_prob, mixed_distribution_var, residual_offset):
         # CRAA 따라서 \mu만 업데이트 하는걸로.
         Lambda = np.zeros(3)  # Likelihood
         filtered_mu = np.zeros(3)  # 우도(Likelihood)랑 가중합되어서 업데이트.
@@ -152,7 +155,12 @@ class IMM:
             filtered_mu[j] = np.nan_to_num((Lambda[j] * mixed_model_prob[j]) / normalizing)  # 우도로 정규화
         filtered_mu = self.row_wise_normalization(filtered_mu)  # 최종 정규화
 
-        self.mu = filtered_mu  # Update /mu for the next iteration
+        if curr == 1:
+            self.mu[pred_step, :] = filtered_mu  # Update /mu for the next iteration
+        else:
+            self.mu[pred_step, :] = filtered_mu
+
+        print('self.mu: {}'.format(self.mu))
 
         return filtered_mu
 
@@ -175,41 +183,41 @@ def cov_print(time_steps, objects, predicted_cov):
         plt.show()
 
 
-def simulate_steps(obj, time_step, curr_offsets, curr_velocities, IMM_to_main):
-    # print("=============================================================")
-    # print("{}번 객체에 대한 {}번째 IMM 진행".format(obj.id, time_step))
-
-    TPM = IMM_to_main.generate_TPM_CDF(curr_velocities[obj.id, time_step])
-    mixed_mu, mixed_ratio, mixed_bar_q, mixed_P = IMM_to_main.mixed_prediction(TPM)
-
-    # print("객체 위치 : {}".format(curr_offsets[obj.id, time_step]))
-    if curr_offsets[obj.id, time_step] <= 4:
-        roi = 1
-    elif 4 < curr_offsets[obj.id, time_step] <= 8:
-        roi = 2
-    else:
-        roi = 3
-    # print("객체 위치 : RoI {}".format(roi))
-
-    residual_term = curr_offsets[obj.id, time_step] - mixed_bar_q
-    # print("resual_term :", residual_term)
-    filtered_mu = IMM_to_main.filter_prediction(mixed_mu, mixed_P, residual_term)  # 필터 단계, \mu만 갱신
-    IMM_to_main.mu_values[time_step] = filtered_mu
-    # print("Filtered mu: {}".format(filtered_mu))
-
-    predicted_loc = filtered_mu[0] * 2 + filtered_mu[1] * 6 + filtered_mu[2] * 10
-    predicted_covariance = 0
-    for lane in range(3):
-        predicted_covariance += filtered_mu[lane] * (mixed_P[lane] + ((mixed_bar_q[lane] - predicted_loc) ** 2))
-
-    # print("Predict loc: {}".format(predicted_loc))
-    # print("Predict covariance: {}".format(predicted_covariance))
-    IMM_to_main.predicted_loc_values[time_step] = predicted_loc  # 예측 위치 저장
-    IMM_to_main.predicted_cov[time_step] = predicted_covariance
-
-    pred_offsets, pred_center_vels = predicted_loc, curr_velocities[obj.id, time_step]
-
-    return pred_offsets, pred_center_vels
+# def simulate_steps(obj, time_step, curr_offsets, curr_velocities, IMM_to_main):
+#     # print("=============================================================")
+#     # print("{}번 객체에 대한 {}번째 IMM 진행".format(obj.id, time_step))
+#
+#     TPM = IMM_to_main.generate_TPM_CDF(curr_velocities[obj.id, time_step])
+#     mixed_mu, mixed_ratio, mixed_bar_q, mixed_P = IMM_to_main.mixed_prediction(TPM)
+#
+#     # print("객체 위치 : {}".format(curr_offsets[obj.id, time_step]))
+#     if curr_offsets[obj.id, time_step] <= 4:
+#         roi = 1
+#     elif 4 < curr_offsets[obj.id, time_step] <= 8:
+#         roi = 2
+#     else:
+#         roi = 3
+#     # print("객체 위치 : RoI {}".format(roi))
+#
+#     residual_term = curr_offsets[obj.id, time_step] - mixed_bar_q
+#     # print("resual_term :", residual_term)
+#     filtered_mu = IMM_to_main.filter_prediction(mixed_mu, mixed_P, residual_term)  # 필터 단계, \mu만 갱신
+#     IMM_to_main.mu_values[time_step] = filtered_mu
+#     # print("Filtered mu: {}".format(filtered_mu))
+#
+#     predicted_loc = filtered_mu[0] * 2 + filtered_mu[1] * 6 + filtered_mu[2] * 10
+#     predicted_covariance = 0
+#     for lane in range(3):
+#         predicted_covariance += filtered_mu[lane] * (mixed_P[lane] + ((mixed_bar_q[lane] - predicted_loc) ** 2))
+#
+#     # print("Predict loc: {}".format(predicted_loc))
+#     # print("Predict covariance: {}".format(predicted_covariance))
+#     IMM_to_main.predicted_loc_values[time_step] = predicted_loc  # 예측 위치 저장
+#     IMM_to_main.predicted_cov[time_step] = predicted_covariance
+#
+#     pred_offsets, pred_center_vels = predicted_loc, curr_velocities[obj.id, time_step]
+#
+#     return pred_offsets, pred_center_vels
 
 def simulate_n_steps(obj, time_step, curr_offsets, curr_velocities, IMMAlg):
     """
@@ -223,6 +231,9 @@ def simulate_n_steps(obj, time_step, curr_offsets, curr_velocities, IMMAlg):
       - pred_offsets: shape (n_steps,), 각 예측 시점의 offset (m)
       - pred_center_vels: shape (n_steps,), 각 예측 시점의 중심 방향 속도 (m/s)
     """
+
+    ### self.mu 부분 문제가 많음. 잘 생각해보고 바꿔야 할 것.
+
     n = IMMAlg.n_steps
     pred_offsets = np.zeros(n)
     pred_center_vels = np.zeros(n)
@@ -233,10 +244,15 @@ def simulate_n_steps(obj, time_step, curr_offsets, curr_velocities, IMMAlg):
 
     # 예측을 n_steps 동안 반복
     for k in range(n):
+        print('k={}'.format(k))
         TPM = IMMAlg.generate_TPM_CDF(current_velocity)
-        mixed_mu, mixed_ratio, mixed_bar_q, mixed_P = IMMAlg.mixed_prediction(TPM)
+        mixed_mu, mixed_ratio, mixed_bar_q, mixed_P = IMMAlg.mixed_prediction(TPM, k)
         residual = current_offset - mixed_bar_q
-        filtered_mu = IMMAlg.filter_prediction(mixed_mu, mixed_P, residual)
+        if k == 0:
+            curr = 1
+        else:
+            curr = 0
+        filtered_mu = IMMAlg.filter_prediction(curr, k, mixed_mu, mixed_P, residual)
         IMMAlg.mu_values[time_step, k] = filtered_mu
         predicted_loc = filtered_mu[0] * 2 + filtered_mu[1] * 6 + filtered_mu[2] * 10
         # 예측 분산은 계산하여 저장할 수 있으나 여기서는 예측 offset, 속도로만 처리
