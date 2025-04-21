@@ -12,6 +12,20 @@ def cal_action(num_obj, time_steps, threat_values):
         actions[j] = max_idx
     return actions
 
+# 10 time step에 Action 1번
+def cal_action_kyu(num_obj, time_steps, threat_values, interval=10):
+    actions = np.full((time_steps), -1)  # -1로 초기화해서 non-action timestep 표시
+    for j in range(0, time_steps, interval):
+        max_val = 0
+        max_idx = -1
+        for i in range(num_obj):
+            if threat_values[i][j] > max_val:
+                max_val = threat_values[i][j]
+                max_idx = i
+        actions[j] = max_idx
+    return actions
+
+
 # (진우 수정2) 새로운 액션 평가 방법 제시
 def cal_total_based_action(num_obj, time_steps, threat_values, pred_threat_values):
     """
@@ -71,3 +85,5 @@ def cal_reward_after_10(num_obj, time_steps, threat_values, actions):
     return reward
 
 
+# def action():
+#

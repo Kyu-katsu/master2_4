@@ -3,6 +3,7 @@ import test_IMM as imm
 import test_RAF as raf
 import test_graph as graph
 import test_save_logs as save_logs
+import test_MDP as mdp
 
 import numpy as np
 import matplotlib
@@ -34,7 +35,7 @@ def main(iter):
     screen, clock = env.init_pygame()
 
     num_objects = 3
-    max_steps = 1000    # 총 100 real time steps (예: 0.1초씩이면 10초)
+    max_steps = 100    # 총 100 real time steps (예: 0.1초씩이면 10초)
     real_dt = 0.1        # real time step 간격 (초)
     n_steps_pred = 5    # IMM 예측 horizon (n time steps, 예: 1 또는 5)
 
@@ -94,8 +95,8 @@ def main(iter):
 
     pygame.quit()
 
+    ### MDP action count
     # 액션, 리워드 계산
-    import test_MDP as mdp
     curr_Risks = risk_vals[:, :, 0]  # shape: (num_objects, save_steps)
     gamma = 0.9
     weights = np.array([gamma ** (i + 1) for i in range(n_steps_pred)])
@@ -103,23 +104,25 @@ def main(iter):
     # curr_offsets = offsets[:, :, 0]
     # pred_offsets = offsets[:, :, 1:1+n_steps_pred]
 
-    curr_based_actions = mdp.cal_action(num_objects, save_steps, curr_Risks)
-    pred_based_actions = mdp.cal_action(num_objects, save_steps, pred_Risks)
-
+    # Current risk Policy
+    curr_based_actions = mdp.cal_action_kyu(num_objects, save_steps, curr_Risks)
     curr_based_reward = mdp.cal_reward_after_10(num_objects, save_steps, curr_Risks, curr_based_actions)
+
+    # Predict risk Policy
+    pred_based_actions = mdp.cal_action_kyu(num_objects, save_steps, pred_Risks)
     pred_based_reward = mdp.cal_reward_after_10(num_objects, save_steps, curr_Risks, pred_based_actions)
 
-    # (진우 수정2) Total risk 방식 액션, 리워드 계산
+    # Total risk Policy
     total_based_actions = mdp.cal_total_based_action(num_objects, save_steps, curr_Risks, pred_Risks)
     total_based_reward = mdp.cal_reward_after_10(num_objects, save_steps, curr_Risks, total_based_actions)
 
-    # (진우 수정3) Random policy 액션, 리워드 계산
+    # Random policy 액션, 리워드 계산
     random_based_actions = mdp.random_action(num_objects, save_steps)
     random_based_reward = mdp.cal_reward_after_10(num_objects, save_steps, curr_Risks, random_based_actions)
 
     # (진우 수정3) 그래프 저장. 저장 위치: Offset_plots 파일 안.
     os.makedirs("Offset_plots", exist_ok=True)
-    filename = f"MDP{max_steps}step_IMM{n_steps_pred}step_offset_plot_{iter}.png"
+    filename = f"MDP{max_steps}step_IMM{n_steps_pred}step_offset_(2,4,6)_plot_{iter}.png"
     graph.save_plot_offsets(save_steps, offsets, n_steps_pred, filename)
 
     # (진우 수정3) 로그 저장. 저장 위치: Logs 파일 안.
@@ -142,7 +145,7 @@ def main(iter):
 
 
 if __name__ == "__main__":
-    iteration = 10
+    iteration = 1
 
     # (진우 수정4) 여러번 돌려서 case 1~4의 우승 횟수(리워드 제일 작은지) 확인
     win_count = np.zeros((15))

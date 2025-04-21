@@ -119,13 +119,13 @@ class IMM:
         mixed_P = np.zeros(3)
 
         for j in range(3):  # 혼합 모델 확률, \mu_{k|k-1}^{j}
-            mixed_mu[j] = np.sum(TPM[:, j].T * self.mu[step, :])
+            mixed_mu[j] = np.sum(TPM[:, j].T * self.mu[step])
         mixed_mu = self.row_wise_normalization(mixed_mu)
 
         for i in range(3):  # 혼합 비율, \mu_{k|k-1}^{i|j} = \mu_{k|k-1}^{ij}
             for j in range(3):
                 if mixed_mu[j] != 0:  # 0으로 나누는 오류 방지
-                    mixed_ratio[i, j] = (TPM[i, j] * self.mu[step, i]) / mixed_mu[j]
+                    mixed_ratio[i, j] = (TPM[i, j] * self.mu[step][i]) / mixed_mu[j]
 
         for j in range(3):  # 혼합 상태 추정치, \bar{q}_{k|k-1}^j
             mixed_bar_q[j] = np.sum(mixed_ratio[:, j].T * self.bar_q)
@@ -156,11 +156,12 @@ class IMM:
         filtered_mu = self.row_wise_normalization(filtered_mu)  # 최종 정규화
 
         if curr == 1:
-            self.mu[pred_step, :] = filtered_mu  # Update /mu for the next iteration
-        else:
-            self.mu[pred_step, :] = filtered_mu
+            self.mu[0] = filtered_mu  # Update /mu for the next iteration
+        #     self.mu[1] = filtered_mu
+        # else:
+        #     self.mu[pred_step + 1] = filtered_mu
 
-        print('self.mu: {}'.format(self.mu))
+        self.mu[pred_step + 1] = filtered_mu
 
         return filtered_mu
 
@@ -232,7 +233,7 @@ def simulate_n_steps(obj, time_step, curr_offsets, curr_velocities, IMMAlg):
       - pred_center_vels: shape (n_steps,), 각 예측 시점의 중심 방향 속도 (m/s)
     """
 
-    ### self.mu 부분 문제가 많음. 잘 생각해보고 바꿔야 할 것.
+    ### self.mu 부분 문제. 잘 생각해보고 바꿔야 할 것.
 
     n = IMMAlg.n_steps
     pred_offsets = np.zeros(n)
@@ -244,25 +245,40 @@ def simulate_n_steps(obj, time_step, curr_offsets, curr_velocities, IMMAlg):
 
     # 예측을 n_steps 동안 반복
     for k in range(n):
-        print('k={}'.format(k))
+        # print('k={}'.format(k))
+
         TPM = IMMAlg.generate_TPM_CDF(current_velocity)
         mixed_mu, mixed_ratio, mixed_bar_q, mixed_P = IMMAlg.mixed_prediction(TPM, k)
         residual = current_offset - mixed_bar_q
+
+        # print('mixed_mu:{}, mixed_ratio:{}, mixed_bar_q:{}, mixed_P:{}'.format(mixed_mu, mixed_ratio, mixed_bar_q, mixed_P))
+
         if k == 0:
             curr = 1
         else:
             curr = 0
         filtered_mu = IMMAlg.filter_prediction(curr, k, mixed_mu, mixed_P, residual)
         IMMAlg.mu_values[time_step, k] = filtered_mu
+
+        # print('obj {} filtered_mu: {}'.format(obj.id, filtered_mu))
+        # print('IMMAlg.mu_values: {}'.format(IMMAlg.mu_values))
+
         predicted_loc = filtered_mu[0] * 2 + filtered_mu[1] * 6 + filtered_mu[2] * 10
+        # predicted_loc = filtered_mu @ mixed_bar_q
+
         # 예측 분산은 계산하여 저장할 수 있으나 여기서는 예측 offset, 속도로만 처리
         IMMAlg.predicted_loc_values[time_step, k] = predicted_loc
         # 단순 모델: 속도는 그대로 유지한다고 가정 (또는 다른 예측 모형 적용 가능)
         pred_offsets[k] = predicted_loc
         pred_center_vels[k] = current_velocity
+
+        # print('pred_offsets :{}'.format(pred_offsets))
+        # print('pred_center_vels :{}'.format(pred_center_vels))
+
         # 만약 다단계 예측으로 현재 상태를 업데이트하고 싶다면:
         current_offset = predicted_loc
-        current_velocity = current_velocity
+        current_velocity = current_velocity # n step 내에서 속도는 유지
+
     return pred_offsets, pred_center_vels
 
 
